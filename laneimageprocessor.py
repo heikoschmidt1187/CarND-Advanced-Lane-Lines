@@ -15,6 +15,14 @@ class LaneImageProcessor():
         currentGray = []
         # current HLS
         currentHLS = []
+        # current thresholds
+        self.abs_sobel_x = []
+        self.abs_sobel_y = []
+        self.mag_grad = []
+        self.dir_grad = []
+        self.color_thresh_R = []
+        self.color_thresh_S = []
+        self.color_thresh_H = []
 
     def process(self, frame, showDebugImages=False):
         """
@@ -34,36 +42,54 @@ class LaneImageProcessor():
         self.currentHLS = cv2.cvtColor(frame, cv2.COLOR_RGB2HLS)
 
         # check for useful sobel operators
-        abs_sobel_x = self.abs_sobel_threshold('x', threshold=(35, 150))
-        abs_sobel_y = self.abs_sobel_threshold('y', threshold=(35, 150))
-        mag_grad = self.mag_sobel_threshold(threshold=(50, 150))
-        dir_grad = self.direction_sobel_threshold(threshold=(0.7, 1.3))
+        self.abs_sobel_x = self.abs_sobel_threshold('x', threshold=(35, 150))
+        self.abs_sobel_y = self.abs_sobel_threshold('y', threshold=(35, 150))
+        self.mag_grad = self.mag_sobel_threshold(threshold=(50, 150))
+        self.dir_grad = self.direction_sobel_threshold(threshold=(0.7, 1.3))
 
-        lower = -np.pi / 2
-        upper = np.pi / 2
+        # check for useful color operators
+        self.color_thresh_R = np.zeros_like(self.currentFrame[:,:,0])
+        R = self.currentFrame[:,:,0]
+        self.color_thresh_R[(R >= 220) & (R <= 255)] = 1
+
+        self.color_thresh_S = np.zeros_like(self.currentHLS[:,:,2])
+        S = self.currentHLS[:,:,2]
+        self.color_thresh_S[(S >= 100) & (S <= 255)] = 1
+
+        self.color_thresh_H = np.zeros_like(self.currentHLS[:,:,0])
+        H = self.currentHLS[:,:,0]
+        self.color_thresh_H[(H >= 20) & (H <= 100)] = 1
+
+        """
+        lower = 0
+        upper = 255
 
         while True:
-            dir_grad = self.direction_sobel_threshold(threshold=(lower, upper))
-            cv2.imshow("Gray", self.currentGray)
-            cv2.imshow("dir", dir_grad * 255)
+            color_thresh_H = np.zeros_like(self.currentHLS[:,:,0])
+            H = self.currentHLS[:,:,0]
+            color_thresh_H[(H >= lower) & (H <= upper)] = 1
+
+            cv2.imshow("H", H)
+            cv2.imshow("thH", color_thresh_H * 255)
 
             key = cv2.waitKey()
 
             if key == 27:
                 break
             elif 'q' == chr(key & 255):
-                lower = (lower + 0.01)
+                lower = (lower + 1)
                 print('Lower: ', lower)
             elif 'a' == chr(key & 255):
-                lower = (lower - 0.01)
+                lower = (lower - 1)
                 print('Lower: ', lower)
             elif 'w' == chr(key & 255):
-                upper = (upper + 0.01)
+                upper = (upper + 1)
                 print('Upper: ', upper)
             elif 's' == chr(key & 255):
-                upper = (upper - 0.01)
+                upper = (upper - 1)
                 print('Upper: ', upper)
 
+        """
 
         self.show_debug_plots()
 
@@ -157,7 +183,9 @@ class LaneImageProcessor():
 
         # Show debug images if selected - this may change during development
         if self.showDebug == True:
-            f, ((orig, r, g, b), (gray, h, l, s)) = plt.subplots(2, 4, figsize=(24,9))
+            f, ((orig, r, g, b), (gray, h, l, s), (sx, sy, mag, dir), (rt, st, rh, Z)) = \
+            plt.subplots(4, 4, figsize=(24,9))
+
             orig.imshow(self.currentFrame)
             orig.set_title("Original frame")
             r.imshow(self.currentFrame[:,:,0], cmap='gray')
@@ -174,4 +202,21 @@ class LaneImageProcessor():
             l.set_title("HLS L-Channel")
             s.imshow(self.currentHLS[:,:,2], cmap='gray')
             s.set_title("HLS S-Channel")
+
+            sx.imshow(self.abs_sobel_x, cmap='gray')
+            sx.set_title("Sobel X Threshold")
+            sy.imshow(self.abs_sobel_y, cmap='gray')
+            sy.set_title("Sobel Y Threshold")
+            mag.imshow(self.mag_grad, cmap='gray')
+            mag.set_title("Magnitude Threshold")
+            dir.imshow(self.dir_grad, cmap='gray')
+            dir.set_title("Direction Threshold")
+
+            rt.imshow(self.color_thresh_R, cmap='gray')
+            rt.set_title("R-Channel color threshold")
+            st.imshow(self.color_thresh_S, cmap='gray')
+            st.set_title("S-Channel color threshold")
+            rh.imshow(self.color_thresh_H, cmap='gray')
+            rh.set_title("H-Channel color threshold")
+
             plt.show()

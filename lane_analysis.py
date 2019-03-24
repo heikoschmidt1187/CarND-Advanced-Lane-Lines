@@ -44,4 +44,5 @@ if __name__ == "__main__":
     # start by using a static test image to implement pipeline
     #testimage = mpimg.imread("test_images/straight_lines1.jpg")
     testimage = mpimg.imread("test_images/test4.jpg")
+    testimage = camera.undistort(testimage)
     imageProcessor.process(testimage, debugMode)
