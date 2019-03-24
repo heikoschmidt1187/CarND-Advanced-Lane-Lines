@@ -34,20 +34,17 @@ class LaneImageProcessor():
         self.currentHLS = cv2.cvtColor(frame, cv2.COLOR_RGB2HLS)
 
         # check for useful sobel operators
-        sobelx = self.abs_sobel_threshold('x', (35, 150))
-        sobely = self.abs_sobel_threshold('y', (35, 150))
+        abs_sobel_x = self.abs_sobel_threshold('x', threshold=(35, 150))
+        abs_sobel_y = self.abs_sobel_threshold('y', threshold=(35, 150))
+        mag_grad = self.mag_sobel_threshold(threshold=(50, 150))
 
-        lower = 35
+        lower = 50
         upper = 150
 
         while True:
-            sobelx = self.abs_sobel_threshold('x', (lower, upper))
-            sobely = self.abs_sobel_threshold('y', (lower, upper))
-
+            mag_grad = self.mag_sobel_threshold(threshold=(lower, upper))
             cv2.imshow("Gray", self.currentGray)
-            cv2.imshow("sobelX", sobelx * 255)
-            cv2.imshow("sobelY", sobely * 255)
-
+            cv2.imshow("mag", mag_grad * 255)
 
             key = cv2.waitKey()
 
@@ -60,7 +57,7 @@ class LaneImageProcessor():
                 lower = (lower - 1)
                 if lower < 0:
                     lower = 0
-                print('Lower: ', lower)
+                    print('Lower: ', lower)
             elif 'w' == chr(key & 255):
                 upper = (upper + 1) % 255
                 print('Upper: ', upper)
@@ -71,13 +68,41 @@ class LaneImageProcessor():
                 print('Upper: ', upper)
 
 
-
         self.show_debug_plots()
 
-    def abs_sobel_threshold(self, orientation='x', threshold=(0, 255)):
+    def mag_sobel_threshold(self, kernel_size=3, threshold=(0, 255)):
+        """
+        `kernel_size` Input for kernel size of sobel operator
+        `threshold` Input tuple for lower and upper threshold
+
+        This function calculates the magnitude of the gradients detected by the
+        sobel operator in X and Y direction.
+
+        returns a binary image based on the given thresholds
+        """
+
+        # calculate the sobel
+        sobelx = cv2.Sobel(self.currentGray, cv2.CV_64F, 1, 0, ksize=kernel_size)
+        sobely = cv2.Sobel(self.currentGray, cv2.CV_64F, 0, 1, ksize=kernel_size)
+
+        # calculate the gradient magnitude
+        magnitude = np.sqrt(sobelx**2 + sobely**2)
+
+        # rescale to 8 bit
+        scale = np.max(magnitude)/255
+        magnitude = (magnitude / scale).astype(np.uint8)
+
+        # calculate the binary output with respect to thresholds
+        binary_output = np.zeros_like(magnitude)
+        binary_output[(magnitude >= threshold[0]) & (magnitude <= threshold[1])] = 1
+        return binary_output
+
+
+    def abs_sobel_threshold(self, orientation='x', kernel_size=3, threshold=(0, 255)):
         """
         `orientation` Input for setting the sobel operator gradient orientation (x, y)
-        `threshold` Input touble for lower and upper threshold
+        `kernel_size` Input for kernel size of sobel operator
+        `threshold` Input tuple for lower and upper threshold
 
         This function calculates a binary image mask according to the absolute
         sobel operation on a given gradient, based on a lower and upper
@@ -87,9 +112,11 @@ class LaneImageProcessor():
         """
         # calculate the sobel depending on the orientation
         if orientation == 'x':
-            abs_sobel = np.absolute(cv2.Sobel(self.currentGray, cv2.CV_64F, 1, 0))
+            abs_sobel = np.absolute(cv2.Sobel(self.currentGray, cv2.CV_64F, 1, 0, \
+                ksize=kernel_size))
         elif orientation == 'y':
-            abs_sobel = np.absolute(cv2.Sobel(self.currentGray, cv2.CV_64F, 0, 1))
+            abs_sobel = np.absolute(cv2.Sobel(self.currentGray, cv2.CV_64F, 0, 1, \
+                ksize=kernel_size))
         else:
             abs_sobel = np.zeros_like(self.currentGray)
             print("None")
