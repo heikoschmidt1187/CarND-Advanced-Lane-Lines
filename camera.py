@@ -26,6 +26,8 @@ class Camera():
         returns if the calibration has been successful
         """
 
+        print("Camera Calibrating...")
+
         # start uncalibrated when running calibration routine
         self.calibrated = False
 
