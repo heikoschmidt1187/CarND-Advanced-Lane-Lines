@@ -65,39 +65,53 @@ class LaneImageProcessor():
         self.combined_threshold[ \
             ((self.color_thresh_R == 1) & (self.color_thresh_S == 1)) | \
             ((self.abs_sobel_x == 1) & (self.mag_grad == 0))] = 1
-            
-        """
-        lower = 0
-        upper = 255
 
-        while True:
-            color_thresh_H = np.zeros_like(self.currentHLS[:,:,0])
-            H = self.currentHLS[:,:,0]
-            color_thresh_H[(H >= lower) & (H <= upper)] = 1
+        # bird view handling
+        birds_view_thresh = self.perspective_transform('b', self.combined_threshold)
 
-            cv2.imshow("H", H)
-            cv2.imshow("thH", color_thresh_H * 255)
 
-            key = cv2.waitKey()
-
-            if key == 27:
-                break
-            elif 'q' == chr(key & 255):
-                lower = (lower + 1)
-                print('Lower: ', lower)
-            elif 'a' == chr(key & 255):
-                lower = (lower - 1)
-                print('Lower: ', lower)
-            elif 'w' == chr(key & 255):
-                upper = (upper + 1)
-                print('Upper: ', upper)
-            elif 's' == chr(key & 255):
-                upper = (upper - 1)
-                print('Upper: ', upper)
-
-        """
 
         self.show_debug_plots()
+
+    def perspective_transform(self, direction, srcImage):
+        """
+        TODO
+        """
+        # define the world and perspective space points
+        world = np.float32(
+            [[603, 443],
+            [677, 443],
+            [1048, 670],
+            [260, 670]])
+
+        # TODO: use image shape
+        perspective = np.float32(
+            [[260, 0],
+            [1020, 0],
+            [1020, 720],
+            [260, 720]])
+
+        """
+        srcImage = cv2.line(srcImage, (603, 443), (677, 443), (255, 0, 0), 1)
+        srcImage = cv2.line(srcImage, (677, 443), (1048, 670), (255, 0, 0), 1)
+        srcImage = cv2.line(srcImage, (1048, 670), (260, 670), (255, 0, 0), 1)
+        srcImage = cv2.line(srcImage, (260, 670), (603, 443), (255, 0, 0), 1)
+        """
+
+        # get perspective perspective transform
+        if direction == 'b':
+            # do a bird view transform
+            M = cv2.getPerspectiveTransform(world, perspective)
+        else:
+            M = cv2.getPerspectiveTransform(perspective, world)
+
+        transformed = cv2.warpPerspective(srcImage, M, (1280, 720), flags=cv2.INTER_LINEAR)
+
+        f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24,9))
+        ax1.imshow(srcImage, cmap='gray')
+        ax2.imshow(transformed, cmap='gray')
+
+        return transformed
 
     def direction_sobel_threshold(self, kernel_size=3, threshold=(0, np.pi / 2)):
         """
