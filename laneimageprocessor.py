@@ -23,6 +23,7 @@ class LaneImageProcessor():
         self.color_thresh_R = []
         self.color_thresh_S = []
         self.color_thresh_H = []
+        self.combined_threshold = []
 
     def process(self, frame, showDebugImages=False):
         """
@@ -60,6 +61,11 @@ class LaneImageProcessor():
         H = self.currentHLS[:,:,0]
         self.color_thresh_H[(H >= 20) & (H <= 100)] = 1
 
+        self.combined_threshold = np.zeros_like(self.currentGray)
+        self.combined_threshold[ \
+            ((self.color_thresh_R == 1) & (self.color_thresh_S == 1)) | \
+            ((self.abs_sobel_x == 1) & (self.mag_grad == 0))] = 1
+            
         """
         lower = 0
         upper = 255
@@ -183,7 +189,7 @@ class LaneImageProcessor():
 
         # Show debug images if selected - this may change during development
         if self.showDebug == True:
-            f, ((orig, r, g, b), (gray, h, l, s), (sx, sy, mag, dir), (rt, st, rh, Z)) = \
+            f, ((orig, r, g, b), (gray, h, l, s), (sx, sy, mag, dir), (rt, st, rh, combined)) = \
             plt.subplots(4, 4, figsize=(24,9))
 
             orig.imshow(self.currentFrame)
@@ -218,5 +224,7 @@ class LaneImageProcessor():
             st.set_title("S-Channel color threshold")
             rh.imshow(self.color_thresh_H, cmap='gray')
             rh.set_title("H-Channel color threshold")
+            combined.imshow(self.combined_threshold, cmap='gray')
+            combined.set_title("Combined Threshold")
 
             plt.show()

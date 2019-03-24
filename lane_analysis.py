@@ -43,6 +43,11 @@ if __name__ == "__main__":
 
     # start by using a static test image to implement pipeline
     #testimage = mpimg.imread("test_images/straight_lines1.jpg")
-    testimage = mpimg.imread("test_images/test4.jpg")
-    testimage = camera.undistort(testimage)
-    imageProcessor.process(testimage, debugMode)
+    #testimage = mpimg.imread("test_images/test2.jpg")
+    testimages = glob.glob('test_images/*.jpg')
+
+    for curImage in testimages:
+        print(curImage)
+        testimage = mpimg.imread(curImage)
+        testimage = camera.undistort(testimage)
+        imageProcessor.process(testimage, debugMode)
