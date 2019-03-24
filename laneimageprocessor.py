@@ -37,38 +37,61 @@ class LaneImageProcessor():
         abs_sobel_x = self.abs_sobel_threshold('x', threshold=(35, 150))
         abs_sobel_y = self.abs_sobel_threshold('y', threshold=(35, 150))
         mag_grad = self.mag_sobel_threshold(threshold=(50, 150))
+        dir_grad = self.direction_sobel_threshold(threshold=(0.7, 1.3))
 
-        lower = 50
-        upper = 150
+        lower = -np.pi / 2
+        upper = np.pi / 2
 
         while True:
-            mag_grad = self.mag_sobel_threshold(threshold=(lower, upper))
+            dir_grad = self.direction_sobel_threshold(threshold=(lower, upper))
             cv2.imshow("Gray", self.currentGray)
-            cv2.imshow("mag", mag_grad * 255)
+            cv2.imshow("dir", dir_grad * 255)
 
             key = cv2.waitKey()
 
             if key == 27:
                 break
             elif 'q' == chr(key & 255):
-                lower = (lower + 1) % 255
+                lower = (lower + 0.01)
                 print('Lower: ', lower)
             elif 'a' == chr(key & 255):
-                lower = (lower - 1)
-                if lower < 0:
-                    lower = 0
-                    print('Lower: ', lower)
+                lower = (lower - 0.01)
+                print('Lower: ', lower)
             elif 'w' == chr(key & 255):
-                upper = (upper + 1) % 255
+                upper = (upper + 0.01)
                 print('Upper: ', upper)
             elif 's' == chr(key & 255):
-                upper = (upper - 1)
-                if upper < 0:
-                    upper = 0
+                upper = (upper - 0.01)
                 print('Upper: ', upper)
 
 
         self.show_debug_plots()
+
+    def direction_sobel_threshold(self, kernel_size=3, threshold=(0, np.pi / 2)):
+        """
+        `kernel_size` Input for kernel size of sobel operator
+        `threshold` Input tuple for lower and upper threshold in rad
+
+        This function calculates the gradients and thresholds the direction based
+        on given angles
+
+        returns a binary image based on the given thresholds
+        """
+
+        # calculate the sobel
+        sobelx = cv2.Sobel(self.currentGray, cv2.CV_64F, 1, 0, ksize=kernel_size)
+        sobely = cv2.Sobel(self.currentGray, cv2.CV_64F, 0, 1, ksize=kernel_size)
+
+        # calculate the gradient direction
+        absgraddir = np.arctan2(np.absolute(sobely), np.absolute(sobelx))
+
+        # calculate the binary output with respect to thresholds
+        binary_output =  np.zeros_like(absgraddir)
+        binary_output[(absgraddir >= threshold[0]) & (absgraddir <= threshold[1])] = 1
+
+        # Return the binary image
+        return binary_output
+
 
     def mag_sobel_threshold(self, kernel_size=3, threshold=(0, 255)):
         """
