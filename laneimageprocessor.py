@@ -94,7 +94,7 @@ class LaneImageProcessor():
         lower_half = bird_view[bird_view.shape[0] // 2:, :]
         histogram = np.sum(lower_half, axis=0)
 
-        # TODO: visualize histogram in image
+        # TODO: histogram visualization
 
         # split histogram into left and right, as car should be always between
         # the lines and camera is mounted in center (except lange chane!)
@@ -156,13 +156,9 @@ class LaneImageProcessor():
             if len(good_right_inds) > minpix:
                 rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
 
-         # Concatenate the arrays of indices (previously was a list of lists of pixels)
-        try:
-            left_lane_inds = np.concatenate(left_lane_inds)
-            right_lane_inds = np.concatenate(right_lane_inds)
-        except ValueError:
-            # Avoids an error if the above is not implemented fully
-            pass
+        # Concatenate the arrays of indices (previously was a list of lists of pixels)
+        left_lane_inds = np.concatenate(left_lane_inds)
+        right_lane_inds = np.concatenate(right_lane_inds)
 
         # Extract left and right line pixel positions
         leftx = nonzerox[left_lane_inds]
@@ -176,7 +172,6 @@ class LaneImageProcessor():
         """
         TODO
         """
-
         leftx, lefty, rightx, righty, out_img = self.find_lane_pixels(bird_view)
 
         # Fit a second order polynomial to each using `np.polyfit`
@@ -200,11 +195,12 @@ class LaneImageProcessor():
         out_img[righty, rightx] = [0, 0, 255]
 
         # Plots the left and right polynomials on the lane lines
-        """
-        TODO
-        plt.plot(left_fitx, ploty, color='yellow')
-        plt.plot(right_fitx, ploty, color='yellow')
-        """
+        # Recast the x and y points into usable format for cv2.fillPoly()
+        pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
+        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
+        pts = np.hstack((pts_left, pts_right))
+
+        cv2.fillPoly(out_img, np.int_([pts]), (0, 255, 0))
 
         return out_img
 

@@ -49,6 +49,7 @@ if __name__ == "__main__":
 
     #for curImage in testimages:
     #   print(curImage)
+    """
     curImage = "test_images/straight_lines1.jpg"
     testimage = mpimg.imread(curImage)
     testimage = camera.undistort(testimage)
@@ -62,4 +63,3 @@ if __name__ == "__main__":
     clip1 = VideoFileClip('project_video.mp4')
     test_clip = clip1.fl_image(imageProcessor.process)
     test_clip.write_videofile(test_output, audio=False)
-    """
