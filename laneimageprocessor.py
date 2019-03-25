@@ -3,6 +3,8 @@ import cv2
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
+from line import Line
+
 # Define a class for processing a lane image
 class LaneImageProcessor():
 
@@ -24,6 +26,8 @@ class LaneImageProcessor():
         self.color_thresh_S = []
         self.color_thresh_H = []
         self.combined_threshold = []
+        # left and right line
+        self.lines = {'left' : Line(), 'right' : Line()}
 
     def process(self, frame, showDebugImages=False):
         """
@@ -69,9 +73,140 @@ class LaneImageProcessor():
         # bird view handling
         birds_view_thresh = self.perspective_transform('b', self.combined_threshold)
 
+        # return image combined of processing images
+        debug_image = np.zeros((720, 1920, 3), dtype=np.uint8)
+        debug_image[0:720, 0:1280] = self.currentFrame
+        detection = np.dstack((birds_view_thresh, birds_view_thresh, birds_view_thresh)) * 255
+        #debug_image[0:360, 1280:] = cv2.resize(bird, (640, 360))
 
+        detection = self.detect_lanes(birds_view_thresh)
+        debug_image[0:360, 1280:] = cv2.resize(detection, (640, 360))
 
-        self.show_debug_plots()
+        return debug_image
+
+        #self.show_debug_plots()
+
+    def find_lane_pixels(self, bird_view):
+        """
+        TODO
+        """
+        # get histogram peaks as a starting point in the lower image half
+        lower_half = bird_view[bird_view.shape[0] // 2:, :]
+        histogram = np.sum(lower_half, axis=0)
+
+        # TODO: visualize histogram in image
+
+        # split histogram into left and right, as car should be always between
+        # the lines and camera is mounted in center (except lange chane!)
+        out_img = np.dstack((bird_view, bird_view, bird_view)) * 255
+
+        midpoint = np.int(histogram.shape[0] // 2)
+        leftx_base = np.argmax(histogram[:midpoint])
+        rightx_base = np.argmax(histogram[midpoint:]) + midpoint
+
+        # sliding window parameters
+        number_of_windows = 9 # total number of windows vertically
+        margin = 100 # pixel margin for each window left and right of center
+        minpix = 50 # minimun number of pixels to detect for center replacing
+
+        # window height depends on the number of sliding windows
+        window_height = np.int(bird_view.shape[0] // number_of_windows)
+
+        # get position of all pixel in binary image that are on
+        nonzero = bird_view.nonzero()
+        nonzeroy = np.array(nonzero[0])
+        nonzerox = np.array(nonzero[1])
+
+        # set current mid to histogram based values first
+        leftx_current = leftx_base
+        rightx_current = rightx_base
+
+        # left and right pixel indizes
+        left_lane_inds = []
+        right_lane_inds = []
+
+        for window in range(number_of_windows):
+            # Identify window boundaries in x and y (and right and left)
+            win_y_low = bird_view.shape[0] - (window+1)*window_height
+            win_y_high = bird_view.shape[0] - window*window_height
+            win_xleft_low = leftx_current - margin
+            win_xleft_high = leftx_current + margin
+            win_xright_low = rightx_current - margin
+            win_xright_high = rightx_current + margin
+
+            # Draw the windows on the visualization image
+            cv2.rectangle(out_img,(win_xleft_low,win_y_low),
+            (win_xleft_high,win_y_high),(0,255,0), 2)
+            cv2.rectangle(out_img,(win_xright_low,win_y_low),
+            (win_xright_high,win_y_high),(0,255,0), 2)
+
+            # Identify the nonzero pixels in x and y within the window #
+            good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
+            (nonzerox >= win_xleft_low) &  (nonzerox < win_xleft_high)).nonzero()[0]
+            good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
+            (nonzerox >= win_xright_low) &  (nonzerox < win_xright_high)).nonzero()[0]
+
+            # Append these indices to the lists
+            left_lane_inds.append(good_left_inds)
+            right_lane_inds.append(good_right_inds)
+
+            # If you found > minpix pixels, recenter next window on their mean position
+            if len(good_left_inds) > minpix:
+                leftx_current = np.int(np.mean(nonzerox[good_left_inds]))
+            if len(good_right_inds) > minpix:
+                rightx_current = np.int(np.mean(nonzerox[good_right_inds]))
+
+         # Concatenate the arrays of indices (previously was a list of lists of pixels)
+        try:
+            left_lane_inds = np.concatenate(left_lane_inds)
+            right_lane_inds = np.concatenate(right_lane_inds)
+        except ValueError:
+            # Avoids an error if the above is not implemented fully
+            pass
+
+        # Extract left and right line pixel positions
+        leftx = nonzerox[left_lane_inds]
+        lefty = nonzeroy[left_lane_inds]
+        rightx = nonzerox[right_lane_inds]
+        righty = nonzeroy[right_lane_inds]
+
+        return leftx, lefty, rightx, righty, out_img
+
+    def detect_lanes(self, bird_view):
+        """
+        TODO
+        """
+
+        leftx, lefty, rightx, righty, out_img = self.find_lane_pixels(bird_view)
+
+        # Fit a second order polynomial to each using `np.polyfit`
+        left_fit = np.polyfit(lefty, leftx, 2)
+        right_fit = np.polyfit(righty, rightx, 2)
+
+        # Generate x and y values for plotting
+        ploty = np.linspace(0, bird_view.shape[0]-1, bird_view.shape[0] )
+        try:
+            left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
+            right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
+        except TypeError:
+            # Avoids an error if `left` and `right_fit` are still none or incorrect
+            print('The function failed to fit a line!')
+            left_fitx = 1*ploty**2 + 1*ploty
+            right_fitx = 1*ploty**2 + 1*ploty
+
+        ## Visualization ##
+        # Colors in the left and right lane regions
+        out_img[lefty, leftx] = [255, 0, 0]
+        out_img[righty, rightx] = [0, 0, 255]
+
+        # Plots the left and right polynomials on the lane lines
+        """
+        TODO
+        plt.plot(left_fitx, ploty, color='yellow')
+        plt.plot(right_fitx, ploty, color='yellow')
+        """
+
+        return out_img
 
     def perspective_transform(self, direction, srcImage):
         """
@@ -81,8 +216,8 @@ class LaneImageProcessor():
         world = np.float32(
             [[603, 443],
             [677, 443],
-            [1048, 670],
-            [260, 670]])
+            [1095, 707],
+            [210, 707]])
 
         # TODO: use image shape
         perspective = np.float32(
@@ -107,9 +242,12 @@ class LaneImageProcessor():
 
         transformed = cv2.warpPerspective(srcImage, M, (1280, 720), flags=cv2.INTER_LINEAR)
 
+        """
         f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24,9))
         ax1.imshow(srcImage, cmap='gray')
         ax2.imshow(transformed, cmap='gray')
+        plt.show()
+        """
 
         return transformed
 
