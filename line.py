@@ -26,3 +26,29 @@ class Line():
         self.allx = None
         #y values for detected line pixels
         self.ally = None
+
+    def update(self, points_x, points_y):
+        """
+        TODO
+        """
+
+        # TODO: handle internal structures, history, maybe sanity...
+
+        # Fit a second order polynomial to each using `np.polyfit`
+        self.current_fit = np.polyfit(points_y, points_x, 2)
+
+    def get_fit_x(self, ploty):
+        """
+        TODO
+        """
+        # Generate x and y values for plotting
+        try:
+            fitx = self.current_fit[0]*ploty**2 + self.current_fit[1]*ploty + self.current_fit[2]
+        except TypeError:
+            # TODO: check if this is needed and sufficient
+
+            # Avoids an error if `left` and `right_fit` are still none or incorrect
+            print('The function failed to fit a line!')
+            fitx = 1*ploty**2 + 1*ploty
+
+        return fitx

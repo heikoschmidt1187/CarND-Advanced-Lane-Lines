@@ -70,25 +70,66 @@ class LaneImageProcessor():
             ((self.color_thresh_R == 1) & (self.color_thresh_S == 1)) | \
             ((self.abs_sobel_x == 1) & (self.mag_grad == 0))] = 1
 
-        # bird view handling
+        # get the bird's eye view of the combined threshold image
         birds_view_thresh = self.perspective_transform('b', self.combined_threshold)
 
-        # return image combined of processing images
-        debug_image = np.zeros((720, 1920, 3), dtype=np.uint8)
-        debug_image[0:720, 0:1280] = self.currentFrame
-        detection = np.dstack((birds_view_thresh, birds_view_thresh, birds_view_thresh)) * 255
-        #debug_image[0:360, 1280:] = cv2.resize(bird, (640, 360))
+        # detect lanes in the current frame
+        lane_detection = self.detect_lanes(birds_view_thresh)
 
-        detection = self.detect_lanes(birds_view_thresh)
-        debug_image[0:360, 1280:] = cv2.resize(detection, (640, 360))
+        # re-warp lane_detection and overlap with current frame
+        warp = self.perspective_transform('r', lane_detection)
+        frame = cv2.addWeighted(self.currentFrame, 1, warp, 0.3, 0.)
+
+        # compose a return image consisting of analysis steps
+        # TODO: use shapes instead of magic numbers
+        debug_image = np.zeros((720, 1920, 3), dtype=np.uint8)
+        debug_image[0:720, 0:1280] = frame
+        debug_image[0:360, 1280:] = cv2.resize(lane_detection, (640, 360))
 
         return debug_image
 
         #self.show_debug_plots()
 
+    def search_around_poly(self, bird_view, fit):
+        """
+        `bird_view` Input bird view image of threshold to analyse for lanes
+        `fit` Input line fit poly around search needs to be done
+
+        This function finds lane pixels based on a margin around a prior detected
+        poly line. This avoids setting up sliding windows in each cycle and
+        saves calculation time.
+
+        returns the X and Y values for left and right side where the detected
+        lane pixels are located
+        """
+        # margin around already detected poly lines
+        margin = 100
+
+        # get activated pixels
+        nonzero = bird_view.nonzero()
+        nonzeroy = np.array(nonzero[0])
+        nonzerox = np.array(nonzero[1])
+
+        lane_inds = ((nonzerox > (fit[0]*(nonzeroy**2) + fit[1]*nonzeroy +
+                    fit[2] - margin)) & (nonzerox < (fit[0]*(nonzeroy**2) +
+                    fit[1]*nonzeroy + fit[2] + margin)))
+
+        x = nonzerox[lane_inds]
+        y = nonzeroy[lane_inds]
+
+        return x, y
+
+
     def find_lane_pixels(self, bird_view):
         """
-        TODO
+        `bird_view` Input bird view image of threshold to analyse for lanes
+
+        This function finds lane pixels based on a histogram approach. Therefor
+        it doesn't use any prior information, but instead starts without any
+        previous knowledge.
+
+        returns the X and Y values for left and right side where the detected
+        lane pixels are located
         """
         # get histogram peaks as a starting point in the lower image half
         lower_half = bird_view[bird_view.shape[0] // 2:, :]
@@ -97,7 +138,7 @@ class LaneImageProcessor():
         # TODO: histogram visualization
 
         # split histogram into left and right, as car should be always between
-        # the lines and camera is mounted in center (except lange chane!)
+        # the lines (except lange change) and camera is mounted in center
         out_img = np.dstack((bird_view, bird_view, bird_view)) * 255
 
         midpoint = np.int(histogram.shape[0] // 2)
@@ -112,7 +153,7 @@ class LaneImageProcessor():
         # window height depends on the number of sliding windows
         window_height = np.int(bird_view.shape[0] // number_of_windows)
 
-        # get position of all pixel in binary image that are on
+        # get position of all pixel in binary image that are one
         nonzero = bird_view.nonzero()
         nonzeroy = np.array(nonzero[0])
         nonzerox = np.array(nonzero[1])
@@ -126,6 +167,7 @@ class LaneImageProcessor():
         right_lane_inds = []
 
         for window in range(number_of_windows):
+
             # Identify window boundaries in x and y (and right and left)
             win_y_low = bird_view.shape[0] - (window+1)*window_height
             win_y_high = bird_view.shape[0] - window*window_height
@@ -136,15 +178,15 @@ class LaneImageProcessor():
 
             # Draw the windows on the visualization image
             cv2.rectangle(out_img,(win_xleft_low,win_y_low),
-            (win_xleft_high,win_y_high),(0,255,0), 2)
+                (win_xleft_high,win_y_high),(0,255,0), 2)
             cv2.rectangle(out_img,(win_xright_low,win_y_low),
-            (win_xright_high,win_y_high),(0,255,0), 2)
+                (win_xright_high,win_y_high),(0,255,0), 2)
 
             # Identify the nonzero pixels in x and y within the window #
             good_left_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
-            (nonzerox >= win_xleft_low) &  (nonzerox < win_xleft_high)).nonzero()[0]
+                (nonzerox >= win_xleft_low) &  (nonzerox < win_xleft_high)).nonzero()[0]
             good_right_inds = ((nonzeroy >= win_y_low) & (nonzeroy < win_y_high) &
-            (nonzerox >= win_xright_low) &  (nonzerox < win_xright_high)).nonzero()[0]
+                (nonzerox >= win_xright_low) &  (nonzerox < win_xright_high)).nonzero()[0]
 
             # Append these indices to the lists
             left_lane_inds.append(good_left_inds)
@@ -170,37 +212,49 @@ class LaneImageProcessor():
 
     def detect_lanes(self, bird_view):
         """
-        TODO
+        `bird_view` Input bird view image of threshold to analyse for lanes
+
+        This function detects lane lines in a given bird's eye view binary threshold
+        image.
+
+        returns a RGB channel image based on the input threshold image, composed
+        with the analysis results
         """
+        # detect the X and Y positions of all relevant lane pixels - depending on
+        # history of detected lanes
+        # TODO: depending on history don't always start a fresh search
         leftx, lefty, rightx, righty, out_img = self.find_lane_pixels(bird_view)
 
-        # Fit a second order polynomial to each using `np.polyfit`
-        left_fit = np.polyfit(lefty, leftx, 2)
-        right_fit = np.polyfit(righty, rightx, 2)
+        # fit left and right
+        self.lines['left'].update(leftx, lefty)
+        self.lines['right'].update(rightx, righty)
 
-        # Generate x and y values for plotting
-        ploty = np.linspace(0, bird_view.shape[0]-1, bird_view.shape[0] )
-        try:
-            left_fitx = left_fit[0]*ploty**2 + left_fit[1]*ploty + left_fit[2]
-            right_fitx = right_fit[0]*ploty**2 + right_fit[1]*ploty + right_fit[2]
-        except TypeError:
-            # Avoids an error if `left` and `right_fit` are still none or incorrect
-            print('The function failed to fit a line!')
-            left_fitx = 1*ploty**2 + 1*ploty
-            right_fitx = 1*ploty**2 + 1*ploty
+        # TODO: sanity check, filtering, ...
 
         ## Visualization ##
         # Colors in the left and right lane regions
         out_img[lefty, leftx] = [255, 0, 0]
         out_img[righty, rightx] = [0, 0, 255]
 
-        # Plots the left and right polynomials on the lane lines
+        ploty = np.linspace(0, bird_view.shape[0]-1, bird_view.shape[0] )
+        left_fit_x = self.lines['left'].get_fit_x(ploty)
+        right_fit_x = self.lines['right'].get_fit_x(ploty)
+
+        """
+        for i in range(len(ploty)):
+            if left_fit_x[i] >= 0 and left_fit_x[i] < 1280:
+                out_img[int(ploty[i])][int(left_fit_x[i])] = [255, 255, 255]
+            if right_fit_x[i] >= 0 and right_fit_x[i] < 1280:
+                out_img[int(ploty[i])][int(right_fit_x[i])] = [255, 255, 255]
+        """
+
         # Recast the x and y points into usable format for cv2.fillPoly()
-        pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
-        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
+        pts_left = np.array([np.transpose(np.vstack([left_fit_x, ploty]))])
+        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fit_x, ploty])))])
         pts = np.hstack((pts_left, pts_right))
 
-        cv2.fillPoly(out_img, np.int_([pts]), (0, 255, 0))
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(out_img, np.int_([pts]), (0,255, 0))
 
         return out_img
 
