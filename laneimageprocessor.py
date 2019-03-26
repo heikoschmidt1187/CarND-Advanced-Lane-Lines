@@ -29,7 +29,7 @@ class LaneImageProcessor():
         # left and right line
         self.lines = {'left' : Line(), 'right' : Line()}
 
-    def process(self, frame, showDebugImages=False):
+    def process(self, frame, showDebugImages=True):
         """
         `frame` Input frame in RGB color space to be processed
         `showDebugImages` Input flag to show debug images while processing
@@ -66,9 +66,12 @@ class LaneImageProcessor():
         self.color_thresh_H[(H >= 20) & (H <= 100)] = 1
 
         self.combined_threshold = np.zeros_like(self.currentGray)
+        """
         self.combined_threshold[ \
             ((self.color_thresh_R == 1) & (self.color_thresh_S == 1)) | \
             ((self.abs_sobel_x == 1) & (self.mag_grad == 0))] = 1
+        """
+        self.combined_threshold[(self.color_thresh_R == 1) | (self.color_thresh_S == 1)] = 1
 
         # get the bird's eye view of the combined threshold image
         birds_view_thresh = self.perspective_transform('b', self.combined_threshold)
@@ -76,19 +79,49 @@ class LaneImageProcessor():
         # detect lanes in the current frame
         lane_detection = self.detect_lanes(birds_view_thresh)
 
+        #self.show_debug_plots()
+
+        return self.visualize_lanes(lane_detection)
+
+
+    def visualize_lanes(self, debug_viz):
+        """
+        TODO
+        """
+
+        # draw overlay image for current frame
+        overlay = np.zeros_like(self.currentFrame)
+
+        ploty = np.linspace(0, self.currentFrame.shape[0]-1, self.currentFrame.shape[0] )
+        left_fit_x = self.lines['left'].get_fit_x(ploty)
+        right_fit_x = self.lines['right'].get_fit_x(ploty)
+
+        # Recast the x and y points into usable format for cv2.fillPoly()
+        pts_left = np.array([np.transpose(np.vstack([left_fit_x, ploty]))])
+        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fit_x, ploty])))])
+        pts = np.hstack((pts_left, pts_right))
+
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(overlay, np.int_([pts]), (0,255, 0))
+
         # re-warp lane_detection and overlap with current frame
-        warp = self.perspective_transform('r', lane_detection)
+        warp = self.perspective_transform('r', overlay)
         frame = cv2.addWeighted(self.currentFrame, 1, warp, 0.3, 0.)
 
-        # compose a return image consisting of analysis steps
-        # TODO: use shapes instead of magic numbers
-        debug_image = np.zeros((720, 1920, 3), dtype=np.uint8)
-        debug_image[0:720, 0:1280] = frame
-        debug_image[0:360, 1280:] = cv2.resize(lane_detection, (640, 360))
+        if self.showDebug == True:
+            # compose a return image consisting of analysis steps
+            # TODO: use shapes instead of magic numbers
+            debug_image = np.zeros((720, 1920, 3), dtype=np.uint8)
+            debug_image[0:720, 0:1280] = frame
+            debug_image[0:360, 1280:] = cv2.resize(debug_viz, (640, 360))
 
-        return debug_image
+            combined = np.dstack((self.combined_threshold, self.combined_threshold,
+                self.combined_threshold)) * 255
+            debug_image[360:720, 1280:] = cv2.resize(combined, (640, 360))
+            return debug_image
+        else:
+            return frame
 
-        #self.show_debug_plots()
 
     def search_around_poly(self, bird_view, fit):
         """
@@ -231,30 +264,10 @@ class LaneImageProcessor():
 
         # TODO: sanity check, filtering, ...
 
-        ## Visualization ##
         # Colors in the left and right lane regions
         out_img[lefty, leftx] = [255, 0, 0]
         out_img[righty, rightx] = [0, 0, 255]
 
-        ploty = np.linspace(0, bird_view.shape[0]-1, bird_view.shape[0] )
-        left_fit_x = self.lines['left'].get_fit_x(ploty)
-        right_fit_x = self.lines['right'].get_fit_x(ploty)
-
-        """
-        for i in range(len(ploty)):
-            if left_fit_x[i] >= 0 and left_fit_x[i] < 1280:
-                out_img[int(ploty[i])][int(left_fit_x[i])] = [255, 255, 255]
-            if right_fit_x[i] >= 0 and right_fit_x[i] < 1280:
-                out_img[int(ploty[i])][int(right_fit_x[i])] = [255, 255, 255]
-        """
-
-        # Recast the x and y points into usable format for cv2.fillPoly()
-        pts_left = np.array([np.transpose(np.vstack([left_fit_x, ploty]))])
-        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fit_x, ploty])))])
-        pts = np.hstack((pts_left, pts_right))
-
-        # Draw the lane onto the warped blank image
-        cv2.fillPoly(out_img, np.int_([pts]), (0,255, 0))
 
         return out_img
 
