@@ -13,7 +13,9 @@ class Line():
         #average x values of the fitted line over the last n iterations
         self.bestx = None
         #polynomial coefficients averaged over the last n iterations
-        self.best_fit = None
+        self.best_fit = [np.array([False])]
+        #polinomial coefficients for the last n fits of the lane
+        self.recent_fit = []
         #polynomial coefficients for the most recent fit
         self.current_fit = [np.array([False])]
         #radius of curvature of the line in some units
@@ -26,16 +28,51 @@ class Line():
         self.allx = None
         #y values for detected line pixels
         self.ally = None
+        #maximum number of iterations to average
+        self.max_n = 10
+
+    def reset(self):
+        __init__();
 
     def update(self, points_x, points_y):
         """
         TODO
         """
+        # TODO: handle internal structures, history, maybe sanity, curvature, pos,...
 
-        # TODO: handle internal structures, history, maybe sanity...
+        try:
+            # calculate the current fit
+            self.current_fit = np.polyfit(points_y, points_x, 2)
+            #print("Current fit: ", self.current_fit)
 
-        # Fit a second order polynomial to each using `np.polyfit`
-        self.current_fit = np.polyfit(points_y, points_x, 2)
+            # calculate the diff between current and best fit
+            self.diffs = self.current_fit - self.best_fit
+            #print("Best fit: ", self.best_fit)
+            #print("Diffs: ", self.diffs)
+
+            # calculate new best fit and save history
+            if len(self.recent_fit) == self.max_n:
+                self.recent_fit = self.recent_fit[1:]
+
+            self.recent_fit.append(self.current_fit)
+            #print("Recent: ", self.recent_fit)
+
+            sum = [np.array([False])]
+            for r in self.recent_fit:
+                sum = sum + r
+            self.best_fit = (sum / len(self.recent_fit))[0]
+
+            #print("Best_fit: ", self.best_fit)
+
+
+            # safe current fit points
+            self.allx = points_x
+            self.ally = points_y
+
+            # TODO: self.line_base_pos, self.radius_of_curvature
+
+        except:
+            self.current_fit = self.best_fit
 
     def get_fit_x(self, ploty):
         """
@@ -43,7 +80,7 @@ class Line():
         """
         # Generate x and y values for plotting
         try:
-            fitx = self.current_fit[0]*ploty**2 + self.current_fit[1]*ploty + self.current_fit[2]
+            fitx = self.best_fit[0]*ploty**2 + self.best_fit[1]*ploty + self.best_fit[2]
         except TypeError:
             # TODO: check if this is needed and sufficient
 

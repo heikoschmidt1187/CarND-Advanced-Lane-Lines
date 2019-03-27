@@ -43,8 +43,13 @@ class LaneImageProcessor():
 
         # convert to grayscale and hsl for further processing
         self.currentFrame = frame
+
+        # smooth to reduce noise
         self.currentGray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        self.currentGray = cv2.GaussianBlur(self.currentGray, (5, 5), 0)
+
         self.currentHLS = cv2.cvtColor(frame, cv2.COLOR_RGB2HLS)
+        self.currentHLS = cv2.GaussianBlur(self.currentHLS, (5, 5), 0)
 
         # check for useful sobel operators
         self.abs_sobel_x = self.abs_sobel_threshold('x', threshold=(35, 150))
@@ -65,13 +70,21 @@ class LaneImageProcessor():
         H = self.currentHLS[:,:,0]
         self.color_thresh_H[(H >= 20) & (H <= 100)] = 1
 
+        # combine first the gradient filters and add to satuarion threshold mask
+        grad_combined = np.zeros_like(self.currentGray)
         self.combined_threshold = np.zeros_like(self.currentGray)
+
         """
         self.combined_threshold[ \
             ((self.color_thresh_R == 1) & (self.color_thresh_S == 1)) | \
-            ((self.abs_sobel_x == 1) & (self.mag_grad == 0))] = 1
-        """
+            ((self.abs_sobel_x == 1) & (self.abs_sobel_y == 0))] = 1
         self.combined_threshold[(self.color_thresh_R == 1) | (self.color_thresh_S == 1)] = 1
+        grad_combined[((self.abs_sobel_x == 1) & (self.abs_sobel_y == 1)) \
+            | ((self.mag_grad == 1) & (self.dir_grad == 1))] == 1
+        self.combined_threshold[(self.color_thresh_S == 1) | (grad_combined == 1)] = 1
+        """
+        self.combined_threshold[((self.abs_sobel_x == 1) & (self.abs_sobel_y == 1))
+            | ((self.mag_grad == 1) & (self.dir_grad == 1)) | (self.color_thresh_S == 1)] = 1
 
         # get the bird's eye view of the combined threshold image
         birds_view_thresh = self.perspective_transform('b', self.combined_threshold)
