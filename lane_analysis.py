@@ -56,7 +56,6 @@ if __name__ == "__main__":
 
         plt.imshow(debug_image)
         plt.show()
-    """
 
     """
     test_output = 'project_video_output.mp4'
@@ -68,3 +67,4 @@ if __name__ == "__main__":
     clip1 = VideoFileClip('challenge_video.mp4')
     test_clip = clip1.fl_image(imageProcessor.process)
     test_clip.write_videofile(test_output, audio=False)
+    """

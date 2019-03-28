@@ -29,10 +29,10 @@ class Line():
         #y values for detected line pixels
         self.ally = None
         #maximum number of iterations to average
-        self.max_n = 10
+        self.max_n = 30
 
     def reset(self):
-        __init__();
+        __init__()
 
     def update(self, points_x, points_y):
         """
@@ -71,7 +71,10 @@ class Line():
 
             # TODO: self.line_base_pos, self.radius_of_curvature
 
+            self.detected = True
+
         except:
+            self.detected = False
             self.current_fit = self.best_fit
 
     def get_fit_x(self, ploty):

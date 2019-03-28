@@ -52,9 +52,9 @@ class LaneImageProcessor():
         self.currentHLS = cv2.GaussianBlur(self.currentHLS, (5, 5), 0)
 
         # check for useful sobel operators
-        self.abs_sobel_x = self.abs_sobel_threshold('x', threshold=(35, 150))
-        self.abs_sobel_y = self.abs_sobel_threshold('y', threshold=(35, 150))
-        self.mag_grad = self.mag_sobel_threshold(threshold=(50, 150))
+        self.abs_sobel_x = self.abs_sobel_threshold('x', threshold=(25, 255))
+        self.abs_sobel_y = self.abs_sobel_threshold('y', threshold=(25, 255))
+        self.mag_grad = self.mag_sobel_threshold(threshold=(34, 255))
         self.dir_grad = self.direction_sobel_threshold(threshold=(0.7, 1.3))
 
         # check for useful color operators
@@ -64,11 +64,11 @@ class LaneImageProcessor():
 
         self.color_thresh_S = np.zeros_like(self.currentHLS[:,:,2])
         S = self.currentHLS[:,:,2]
-        self.color_thresh_S[(S >= 100) & (S <= 255)] = 1
+        self.color_thresh_S[(S >= 80) & (S <= 255)] = 1
 
         self.color_thresh_H = np.zeros_like(self.currentHLS[:,:,0])
         H = self.currentHLS[:,:,0]
-        self.color_thresh_H[(H >= 20) & (H <= 100)] = 1
+        self.color_thresh_H[(H >= 17) & (H <= 195)] = 1
 
         # combine first the gradient filters and add to satuarion threshold mask
         grad_combined = np.zeros_like(self.currentGray)
@@ -83,8 +83,13 @@ class LaneImageProcessor():
             | ((self.mag_grad == 1) & (self.dir_grad == 1))] == 1
         self.combined_threshold[(self.color_thresh_S == 1) | (grad_combined == 1)] = 1
         """
-        self.combined_threshold[((self.abs_sobel_x == 1) & (self.abs_sobel_y == 1))
+        """
+        self.combined_threshold[(self.abs_sobel_x == 1 )
             | ((self.mag_grad == 1) & (self.dir_grad == 1)) | (self.color_thresh_S == 1)] = 1
+        """
+
+        self.combined_threshold[((self.abs_sobel_x == 1) & (self.abs_sobel_y == 1) & (self.color_thresh_H == 1))
+        | (self.color_thresh_S == 1)] = 1
 
         # get the bird's eye view of the combined threshold image
         birds_view_thresh = self.perspective_transform('b', self.combined_threshold)
@@ -149,7 +154,7 @@ class LaneImageProcessor():
         lane pixels are located
         """
         # margin around already detected poly lines
-        margin = 100
+        margin = 50
 
         # get activated pixels
         nonzero = bird_view.nonzero()
@@ -163,7 +168,22 @@ class LaneImageProcessor():
         x = nonzerox[lane_inds]
         y = nonzeroy[lane_inds]
 
-        return x, y
+        ploty = np.linspace(0, bird_view.shape[1], bird_view.shape[0] )
+        fitx = fit[0]*ploty**2 + fit[1]*ploty + fit[2]
+
+        out_img = np.dstack((bird_view, bird_view, bird_view)) * 255
+        window_img = np.zeros_like(out_img)
+
+        line_window1 = np.array([np.transpose(np.vstack([fitx-margin, ploty]))])
+        line_window2 = np.array([np.flipud(np.transpose(np.vstack([fitx+margin,
+                              ploty])))])
+        line_pts = np.hstack((line_window1, line_window2))
+
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(window_img, np.int_([line_pts]), (0,255, 0))
+        #out_img = cv2.addWeighted(out_img, 1, window_img, 0.3, 0)
+
+        return x, y, window_img
 
 
     def find_lane_pixels(self, bird_view):
@@ -192,7 +212,7 @@ class LaneImageProcessor():
         rightx_base = np.argmax(histogram[midpoint:]) + midpoint
 
         # sliding window parameters
-        number_of_windows = 9 # total number of windows vertically
+        number_of_windows = 10 # total number of windows vertically
         margin = 100 # pixel margin for each window left and right of center
         minpix = 50 # minimun number of pixels to detect for center replacing
 
@@ -269,7 +289,15 @@ class LaneImageProcessor():
         # detect the X and Y positions of all relevant lane pixels - depending on
         # history of detected lanes
         # TODO: depending on history don't always start a fresh search
-        leftx, lefty, rightx, righty, out_img = self.find_lane_pixels(bird_view)
+        if (self.lines['left'].detected == True) and (self.lines['right'].detected == True):
+            leftx, lefty, overlay1 = self.search_around_poly(bird_view, self.lines['left'].current_fit)
+            rightx, righty, overlay2 = self.search_around_poly(bird_view, self.lines['right'].current_fit)
+            out_img = np.dstack((bird_view, bird_view, bird_view)) * 255
+            out_img = cv2.addWeighted(out_img, 1, overlay1, 0.3, 0)
+            out_img = cv2.addWeighted(out_img, 1, overlay2, 0.3, 0)
+        else:
+            leftx, lefty, rightx, righty, out_img = self.find_lane_pixels(bird_view)
+
 
         # fit left and right
         self.lines['left'].update(leftx, lefty)
@@ -296,10 +324,17 @@ class LaneImageProcessor():
             [210, 707]])
 
         # TODO: use image shape
+        """
         perspective = np.float32(
             [[260, 0],
             [1020, 0],
             [1020, 720],
+            [260, 720]])
+        """
+        perspective = np.float32(
+            [[260, 0],
+            [920, 0],
+            [920, 720],
             [260, 720]])
 
         """
