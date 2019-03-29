@@ -29,7 +29,7 @@ class Line():
         #y values for detected line pixels
         self.ally = None
         #maximum number of iterations to average
-        self.max_n = 30
+        self.max_n = 25
 
     def reset(self):
         __init__()
@@ -62,6 +62,8 @@ class Line():
                 sum = sum + r
             self.best_fit = (sum / len(self.recent_fit))[0]
 
+            # TODO: weighted average!!!
+
             #print("Best_fit: ", self.best_fit)
 
 
@@ -92,3 +94,47 @@ class Line():
             fitx = 1*ploty**2 + 1*ploty
 
         return fitx
+
+    def restore_last(self, points_x = None, points_y = None):
+        """
+        TODO
+        """
+
+        # when calling with no parameter, we just keep the last state activated
+        # and keep signaling a detected line to absorb small flaws of a few
+        # frames - otherwise calculate with new input data
+
+        # ensure detected
+        self.detected = True
+
+        # remove current broken fit from recent fits
+        self.recent_fit = self.recent_fit[:-1]
+
+        # make last valid recent fit to current fit
+        self.current_fit = self.recent_fit[-1]
+
+        # calculate new best fit
+        sum = [np.array([False])]
+        for r in self.recent_fit:
+            sum = sum + r
+        self.best_fit = (sum / len(self.recent_fit))[0]
+        # TODO: weighted average!!!
+
+        # re calculate diffs
+        self.diffs = self.current_fit - self.best_fit
+
+        # TODO: check for corner cases!
+
+        # on new input points, update lane
+        if (points_x is not None) and (points_y is not None):
+            self.update(points_x, points_y)
+
+    @staticmethod
+    def sanity_check(left_line, right_line):
+        """
+        TODO
+        """
+        # check curvatures
+        # check horizontal separation distance
+        # check lines are roughly parallel
+        return True

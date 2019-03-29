@@ -28,6 +28,8 @@ class LaneImageProcessor():
         self.combined_threshold = []
         # left and right line
         self.lines = {'left' : Line(), 'right' : Line()}
+        self.unplausible_lines_ctr = 0
+        self.max_unplausible_lines = 10
 
     def process(self, frame, showDebugImages=True):
         """
@@ -298,12 +300,27 @@ class LaneImageProcessor():
         else:
             leftx, lefty, rightx, righty, out_img = self.find_lane_pixels(bird_view)
 
-
         # fit left and right
         self.lines['left'].update(leftx, lefty)
         self.lines['right'].update(rightx, righty)
 
-        # TODO: sanity check, filtering, ...
+        # sanity check for lines
+        if Line.sanity_check(self.lines['left'], self.lines['right']) == True:
+            self.unplausible_lines_ctr = 0
+        else:
+            self.unplausible_lines_ctr = self.unplausible_lines_ctr + 1
+
+            if self.unplausible_lines_ctr == self.max_unplausible_lines:
+                print("Max number of unplausible lines reached, start new")
+                # TODO: check if reset is needed
+                leftx, lefty, rightx, righty, out_img = self.find_lane_pixels(bird_view)
+                self.lines['left'].restore_last(leftx, lefty)
+                self.lines['right'].restore_last(rightx, righty)
+
+            else:
+                print("Unplausible lines, keep last pair")
+                self.lines['left'].restore_last()
+                self.lines['right'].restore_last()
 
         # Colors in the left and right lane regions
         out_img[lefty, leftx] = [255, 0, 0]
