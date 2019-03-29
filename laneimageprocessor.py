@@ -31,7 +31,21 @@ class LaneImageProcessor():
         self.unplausible_lines_ctr = 0
         self.max_unplausible_lines = 10
 
-    def process(self, frame, showDebugImages=True):
+        # define the world and perspective space points
+        self.world = np.float32(
+            [[603, 443],
+            [677, 443],
+            [1095, 707],
+            [210, 707]])
+
+        # TODO: use image shape
+        self.perspective = np.float32(
+            [[260, 0],
+            [920, 0],
+            [920, 720],
+            [260, 720]])
+
+    def process(self, frame, showDebugImages=True, reset=False):
         """
         `frame` Input frame in RGB color space to be processed
         `showDebugImages` Input flag to show debug images while processing
@@ -42,6 +56,10 @@ class LaneImageProcessor():
         returns the current to lane lines
         """
         self.showDebug = showDebugImages
+
+        if reset == True:
+            self.lines['left'].reset()
+            self.lines['right'].reset()
 
         # convert to grayscale and hsl for further processing
         self.currentFrame = frame
@@ -127,6 +145,18 @@ class LaneImageProcessor():
         # re-warp lane_detection and overlap with current frame
         warp = self.perspective_transform('r', overlay)
         frame = cv2.addWeighted(self.currentFrame, 1, warp, 0.3, 0.)
+
+        # annotate image with curavtures and bases
+        # TODO: mean curvature and car pos from center
+        curvature_text = 'Curvature left: ' + str(round(self.lines['left'].radius_of_curvature, 2)) + \
+            'm Curvatur right: ' + str(round(self.lines['right'].radius_of_curvature, 2)) + 'm'
+        line_base_text = 'Base left: ' + str(round(self.lines['left'].line_base_pos, 2)) + \
+            'm Base right: ' + str(round(self.lines['right'].line_base_pos, 2)) + 'm'
+
+
+        cv2.putText(frame, curvature_text, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        cv2.putText(frame, line_base_text, (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
 
         if self.showDebug == True:
             # compose a return image consisting of analysis steps
@@ -301,8 +331,8 @@ class LaneImageProcessor():
             leftx, lefty, rightx, righty, out_img = self.find_lane_pixels(bird_view)
 
         # fit left and right
-        self.lines['left'].update(leftx, lefty)
-        self.lines['right'].update(rightx, righty)
+        self.lines['left'].update(leftx, lefty, self.perspective)
+        self.lines['right'].update(rightx, righty, self.perspective)
 
         # sanity check for lines
         if Line.sanity_check(self.lines['left'], self.lines['right']) == True:
@@ -314,18 +344,19 @@ class LaneImageProcessor():
                 print("Max number of unplausible lines reached, start new")
                 # TODO: check if reset is needed
                 leftx, lefty, rightx, righty, out_img = self.find_lane_pixels(bird_view)
-                self.lines['left'].restore_last(leftx, lefty)
-                self.lines['right'].restore_last(rightx, righty)
+                self.lines['left'].restore_last(self.perspective, leftx, lefty)
+                self.lines['right'].restore_last(self.perspective, rightx, righty)
 
             else:
                 print("Unplausible lines, keep last pair")
-                self.lines['left'].restore_last()
-                self.lines['right'].restore_last()
+                self.lines['left'].restore_last(self.perspective)
+                self.lines['right'].restore_last(self.perspective)
 
         # Colors in the left and right lane regions
+        """
         out_img[lefty, leftx] = [255, 0, 0]
         out_img[righty, rightx] = [0, 0, 255]
-
+        """
 
         return out_img
 
@@ -333,41 +364,27 @@ class LaneImageProcessor():
         """
         TODO
         """
-        # define the world and perspective space points
-        world = np.float32(
-            [[603, 443],
-            [677, 443],
-            [1095, 707],
-            [210, 707]])
-
-        # TODO: use image shape
-        """
-        perspective = np.float32(
-            [[260, 0],
-            [1020, 0],
-            [1020, 720],
-            [260, 720]])
-        """
-        perspective = np.float32(
-            [[260, 0],
-            [920, 0],
-            [920, 720],
-            [260, 720]])
+        # TODO: globals to avoid magic numbers in update and restore call
 
         """
-        srcImage = cv2.line(srcImage, (603, 443), (677, 443), (255, 0, 0), 1)
-        srcImage = cv2.line(srcImage, (677, 443), (1048, 670), (255, 0, 0), 1)
-        srcImage = cv2.line(srcImage, (1048, 670), (260, 670), (255, 0, 0), 1)
-        srcImage = cv2.line(srcImage, (260, 670), (603, 443), (255, 0, 0), 1)
+        srcImage = cv2.line(srcImage, (self.world[0][0], self.world[0][1]),
+            (self.world[1][0], self.world[1][1]), (255, 0, 0), 2)
+        srcImage = cv2.line(srcImage, (self.world[1][0], self.world[1][1]),
+            (self.world[2][0], self.world[2][1]), (255, 0, 0), 2)
+        srcImage = cv2.line(srcImage, (self.world[2][0], self.world[2][1]),
+            (self.world[3][0], self.world[3][1]), (255, 0, 0), 2)
+        srcImage = cv2.line(srcImage, (self.world[3][0], self.world[3][1]),
+            (self.world[0][0], self.world[0][1]), (255, 0, 0), 2)
         """
 
         # get perspective perspective transform
         if direction == 'b':
             # do a bird view transform
-            M = cv2.getPerspectiveTransform(world, perspective)
+            M = cv2.getPerspectiveTransform(self.world, self.perspective)
         else:
-            M = cv2.getPerspectiveTransform(perspective, world)
+            M = cv2.getPerspectiveTransform(self.perspective, self.world)
 
+        # TODO: image shape
         transformed = cv2.warpPerspective(srcImage, M, (1280, 720), flags=cv2.INTER_LINEAR)
 
         """

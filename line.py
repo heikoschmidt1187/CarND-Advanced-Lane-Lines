@@ -32,9 +32,12 @@ class Line():
         self.max_n = 25
 
     def reset(self):
-        __init__()
+        """
+        TODO
+        """
+        self.__init__()
 
-    def update(self, points_x, points_y):
+    def update(self, points_x, points_y, roi_warped_points):
         """
         TODO
         """
@@ -71,7 +74,7 @@ class Line():
             self.allx = points_x
             self.ally = points_y
 
-            # TODO: self.line_base_pos, self.radius_of_curvature
+            self.calculate_metrics(roi_warped_points)
 
             self.detected = True
 
@@ -95,7 +98,7 @@ class Line():
 
         return fitx
 
-    def restore_last(self, points_x = None, points_y = None):
+    def restore_last(self, roi_warped_points, points_x = None, points_y = None):
         """
         TODO
         """
@@ -128,6 +131,43 @@ class Line():
         # on new input points, update lane
         if (points_x is not None) and (points_y is not None):
             self.update(points_x, points_y)
+        else:
+            self.calculate_metrics(roi_warped_points)
+
+    def calculate_metrics(self, roi_warped_points):
+        """
+        TODO
+        """
+        # line base pos is calculated through the roi information
+        # the used four point ROI has two points at the bottom that are straight
+        # with respect to the bottom - as this points are right next to the lines,
+        # they can be translated from pixels into meters with the knowledge of
+        # a U.S. highway standard lane - this is an apprximation, but should be
+        # good enough for this project
+        # U.S. regulations minimum lane width: 3.7m
+        xm_per_pix = 3.7 / (roi_warped_points[1][0] - roi_warped_points[0][0])
+
+        # each dashed line is 3m long --> about 30m for warped image
+        ym_per_pix = 30 / (roi_warped_points[2][1] - roi_warped_points[0][1])
+
+        # from the roi pixels we calculate the offset from the camera if the car
+        # is at middle --> ie. half bottom roi with is 0
+        x_center = (roi_warped_points[0][0] + \
+            (roi_warped_points[1][0] - roi_warped_points[0][0]) / 2) * xm_per_pix
+
+        top_fitx = self.best_fit[0]*roi_warped_points[0][1]**2 + \
+            self.best_fit[1]*roi_warped_points[0][1] + \
+            self.best_fit[2]
+        base_fitx = self.best_fit[0]*roi_warped_points[2][1]**2 + \
+            self.best_fit[1]*roi_warped_points[2][1] + \
+            self.best_fit[2]
+        # TODO: use shape
+        self.line_base_pos = base_fitx * xm_per_pix - x_center
+
+        ##### TO-DO: Implement the calculation of R_curve (radius of curvature) #####
+        self.radius_of_curvature = ((1 + (2*self.best_fit[0]*roi_warped_points[2][1] + \
+            self.best_fit[1])**2)**1.5) / np.absolute(2*self.best_fit[0])
+
 
     @staticmethod
     def sanity_check(left_line, right_line):

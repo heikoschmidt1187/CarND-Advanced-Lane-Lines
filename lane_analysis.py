@@ -52,12 +52,16 @@ if __name__ == "__main__":
         print(curImage)
         testimage = mpimg.imread(curImage)
         testimage = camera.undistort(testimage)
-        debug_image = imageProcessor.process(testimage, debugMode)
+        debug_image = imageProcessor.process(testimage, debugMode, True)
 
         plt.imshow(debug_image)
         plt.show()
-
     """
+    """
+    testimage = camera.undistort(testimage)
+    imageProcessor.process(testimage, debugMode, True)
+    """
+
     test_output = 'project_video_output.mp4'
     clip1 = VideoFileClip('project_video.mp4')
     test_clip = clip1.fl_image(imageProcessor.process)
