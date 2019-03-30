@@ -33,68 +33,75 @@ class Line():
 
     def reset(self):
         """
-        TODO
+        This function resets the current Line back into it's original state defined
+        in the class' constructor
         """
         self.__init__()
 
     def update(self, points_x, points_y, roi_warped_points):
         """
-        TODO
+        `points_x`  Input of all X coordinates of found relevant pixels that
+                    may define a lane
+        `points_y`  Input of all Y coordiantes of found relevant pixels that
+                    may define a lane
+        `roi_warped_points` Input that consists of four points in the bird's
+                            view image space
+
+        This function updates the internal state of the line object. It therefor
+        takes the pixel coordinates in X and Y direction, fits a second order
+        polynom and tracks the history over the last defined number of frames
         """
-        # TODO: handle internal structures, history, maybe sanity, curvature, pos,...
 
         try:
             # calculate the current fit
             self.current_fit = np.polyfit(points_y, points_x, 2)
-            #print("Current fit: ", self.current_fit)
 
             # calculate the diff between current and best fit
             self.diffs = self.current_fit - self.best_fit
-            #print("Best fit: ", self.best_fit)
-            #print("Diffs: ", self.diffs)
 
             # calculate new best fit and save history
             if len(self.recent_fit) == self.max_n:
                 self.recent_fit = self.recent_fit[1:]
-
             self.recent_fit.append(self.current_fit)
-            #print("Recent: ", self.recent_fit)
 
+            # TODO: weighted average!!!
             sum = [np.array([False])]
             for r in self.recent_fit:
                 sum = sum + r
             self.best_fit = (sum / len(self.recent_fit))[0]
 
-            # TODO: weighted average!!!
-
-            #print("Best_fit: ", self.best_fit)
-
-            # TODO: this should be fitted points! this can save calculation later in processing class
             # TODO: refactor for better efficiency!!!
             # TODO: restore_last and curvature handling on fallback
+            # TODO: refactor -- linspace only needs to be called once in the whole run
             # safe current fit points
             self.ally = np.linspace(0, roi_warped_points[2][1] - 1, roi_warped_points[2][1])
             self.allx = self.get_fit_x(self.ally)
 
+            # calculate the real world unit metrics
             self.calculate_metrics(roi_warped_points)
 
+            # set the lane detected
             self.detected = True
 
         except:
+            # something went wrong, set detected to false and switch to current
+            # best fit
             self.detected = False
             self.current_fit = self.best_fit
 
     def get_fit_x(self, ploty):
         """
-        TODO
+        `ploty` Input of the Y linspace to calculate the X coordinates
+
+        Calculates the X coordinates for the current best fit of the line.
+
+        Returns the X values corresponding to the ploty input space
         """
         # Generate x and y values for plotting
         try:
             fitx = self.best_fit[0]*ploty**2 + self.best_fit[1]*ploty + self.best_fit[2]
         except TypeError:
-            # TODO: check if this is needed and sufficient
-
-            # Avoids an error if `left` and `right_fit` are still none or incorrect
+            # Avoids an error if best_fit is still none or incorrect
             print('The function failed to fit a line!')
             fitx = 1*ploty**2 + 1*ploty
 
@@ -102,7 +109,18 @@ class Line():
 
     def restore_last(self, roi_warped_points, points_x = None, points_y = None):
         """
-        TODO
+        `roi_warped_points` Input that consists of four points in the bird's
+                            view image space
+        `points_x`  Input of all X coordinates of found relevant pixels that
+                    may define a lane
+        `points_y`  Input of all Y coordiantes of found relevant pixels that
+                    may define a lane
+
+        This function restores the last fit and discards the current one. If additionally
+        the pixel points are given, instead of restoring the last fit, it will
+        completely initialize the line and start from scratch.
+
+        Returns True if the restore or finding of new line was successful, else False
         """
 
         # when calling with no parameter, we just keep the last state activated
@@ -114,8 +132,7 @@ class Line():
             self.reset()
             self.update(points_x, points_y, roi_warped_points)
 
-            # TODO: use return from update code!
-            return True
+            return self.detected
 
         elif len(self.recent_fit) >= 2:
             # ensure detected
@@ -135,10 +152,9 @@ class Line():
             # TODO: weighted average!!!
 
             # re calculate diffs
-            self.diffs = self.current_fit - self.best_fit
+            self.riffs = self.current_fit - self.best_fit
 
-            # TODO: check for corner cases!
-
+            # we need to re-calculate the metrics
             self.calculate_metrics(roi_warped_points)
 
             return True
@@ -149,7 +165,12 @@ class Line():
 
     def calculate_metrics(self, roi_warped_points):
         """
-        TODO
+        `roi_warped_points` Input that consists of four points in the bird's
+                            view image space
+
+        This function translate the current line information into real world
+        units. This is done for the radius of the curvature and the base position
+        with to the mount position of the camera on the car.
         """
         # line base pos is calculated through the roi information
         # the used four point ROI has two points at the bottom that are straight
@@ -171,18 +192,17 @@ class Line():
         x_center = (roi_warped_points[0][0] + \
             (roi_warped_points[1][0] - roi_warped_points[0][0]) / 2) * xm_per_pix
 
-        top_fitx = self.best_fit[0]*roi_warped_points[0][1]**2 + \
-            self.best_fit[1]*roi_warped_points[0][1] + \
-            self.best_fit[2]
+        # calculate the base point (near the car) with respect to the ROI
         base_fitx = self.best_fit[0]*roi_warped_points[2][1]**2 + \
             self.best_fit[1]*roi_warped_points[2][1] + \
             self.best_fit[2]
-        # TODO: use shape
+
+        # calculate the base point for the line in m according to the camera
+        # as origin point
         self.line_base_pos = base_fitx * xm_per_pix - x_center
 
-        ##### TO-DO: Implement the calculation of R_curve (radius of curvature) #####
-        # TODO: eliminate calculation
-
+        # calculate the radius of the curvature by fitting a polynom through
+        # the current X and Y points in real world units
         fit_cr = np.polyfit(self.ally * ym_per_pix, self.allx * xm_per_pix, 2)
 
         self.radius_of_curvature = ((1 + (2*fit_cr[0]*719*ym_per_pix + \
@@ -192,11 +212,18 @@ class Line():
     @staticmethod
     def sanity_check(left_line, right_line, roi_warped_points):
         """
-        TODO
+        `left_line` Input of the left line object to sanitize
+        `right_line` Input of the right line object to sanitize
+        `roi_warped_points` Input that consists of four points in the bird's
+                            view image space
+
+        This function does a sanity check on two given lines according to their
+        radius of curvature, base distance and parallelity.
+
+        Returns True if the sanity check passed, else False
         """
 
-        # TODO: use confidence values for all three criteria
-
+        # TODO: maybe use confidence values for all three criteria
 
         # check horizontal separation distance
         if abs(right_line.line_base_pos - left_line.line_base_pos) > 4.0:

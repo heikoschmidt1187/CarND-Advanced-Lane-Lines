@@ -12,6 +12,7 @@ class LaneImageProcessor():
         # flag to show debug images while processing
         self.showDebug = False
         self.noSanityCheck = False
+        self.debugFOV = False
         # current frame
         currentFrame = []
         # current grayscale
@@ -33,34 +34,25 @@ class LaneImageProcessor():
         self.max_unplausible_lines = 10
 
         # define the world and perspective space points
-        """
         self.world = np.float32(
-            [[603, 443],
-            [677, 443],
-            [1095, 707],
-            [210, 707]])
-        """
-        self.world = np.float32(
-            [[576, 460],
-            [703, 460],
+            [[592, 450],
+            [687, 450],
             [1095, 707],
             [210, 707]])
 
-        # TODO: use image shape
-        """
-        self.perspective = np.float32(
-            [[260, 0],
-            [920, 0],
-            [920, 720],
-            [260, 720]])
-        """
+        # TODO: use image shape and relative values
         self.perspective = np.float32(
             [[260, 0],
             [920, 0],
             [920, 720],
             [260, 720]])
 
-    def process(self, frame, showDebugImages=True, reset=False, noSanityCheck=False):
+        # shapes for debug visualization
+        self.debug_image_shape = (720, 1920, 3)
+        self.debug_image_small_size = (640, 360)
+
+
+    def process(self, frame, showDebugImages=True, reset=False, noSanityCheck=False, debugFOV=False):
         """
         `frame` Input frame in RGB color space to be processed
         `showDebugImages` Input flag to show debug images while processing
@@ -72,7 +64,9 @@ class LaneImageProcessor():
         """
         self.showDebug = showDebugImages
         self.noSanityCheck = noSanityCheck
+        self.debugFOV = debugFOV
 
+        # on reset triggered, reset lanes
         if reset == True:
             self.lines['left'].reset()
             self.lines['right'].reset()
@@ -88,55 +82,20 @@ class LaneImageProcessor():
         self.currentHLS = cv2.GaussianBlur(self.currentHLS, (5, 5), 0)
 
         # check for useful sobel operators
-        """
-        self.abs_sobel_x = self.abs_sobel_threshold('x', threshold=(25, 255))
-        self.abs_sobel_y = self.abs_sobel_threshold('y', threshold=(25, 255))
-        self.mag_grad = self.mag_sobel_threshold(threshold=(34, 255))
-        self.dir_grad = self.direction_sobel_threshold(threshold=(0.7, 1.3))
-        """
         self.abs_sobel_x = self.abs_sobel_threshold('x', kernel_size=7, threshold=(15, 100))
         self.abs_sobel_y = self.abs_sobel_threshold('y', kernel_size=7, threshold=(15, 100))
         self.mag_grad = self.mag_sobel_threshold(kernel_size=7, threshold=(30, 100))
         self.dir_grad = self.direction_sobel_threshold(kernel_size=31, threshold=(0.5, 1.0))
 
         # check for useful color operators
-        self.color_thresh_R = np.zeros_like(self.currentFrame[:,:,0])
-        R = self.currentFrame[:,:,0]
-        self.color_thresh_R[(R >= 220) & (R <= 255)] = 1
-
         self.color_thresh_S = np.zeros_like(self.currentHLS[:,:,2])
         S = self.currentHLS[:,:,2]
-        """
-        self.color_thresh_S[(S >= 80) & (S <= 255)] = 1
-        """
         self.color_thresh_S[(S >= 170) & (S <= 255)] = 1
 
-        self.color_thresh_H = np.zeros_like(self.currentHLS[:,:,0])
-        H = self.currentHLS[:,:,0]
-        self.color_thresh_H[(H >= 17) & (H <= 195)] = 1
-
-        # combine first the gradient filters and add to satuarion threshold mask
+        # combine the thresholds
         grad_combined = np.zeros_like(self.currentGray)
         self.combined_threshold = np.zeros_like(self.currentGray)
 
-        """
-        self.combined_threshold[ \
-            ((self.color_thresh_R == 1) & (self.color_thresh_S == 1)) | \
-            ((self.abs_sobel_x == 1) & (self.abs_sobel_y == 0))] = 1
-        self.combined_threshold[(self.color_thresh_R == 1) | (self.color_thresh_S == 1)] = 1
-        grad_combined[((self.abs_sobel_x == 1) & (self.abs_sobel_y == 1)) \
-            | ((self.mag_grad == 1) & (self.dir_grad == 1))] == 1
-        self.combined_threshold[(self.color_thresh_S == 1) | (grad_combined == 1)] = 1
-        """
-        """
-        self.combined_threshold[(self.abs_sobel_x == 1 )
-            | ((self.mag_grad == 1) & (self.dir_grad == 1)) | (self.color_thresh_S == 1)] = 1
-        """
-
-        """
-        self.combined_threshold[((self.abs_sobel_x == 1) & (self.abs_sobel_y == 1) & (self.color_thresh_H == 1))
-        | (self.color_thresh_S == 1)] = 1
-        """
         self.combined_threshold[
             ((self.abs_sobel_x == 1) & (self.abs_sobel_y == 1))
             | ((self.mag_grad == 1) & (self.dir_grad == 1))
@@ -144,11 +103,13 @@ class LaneImageProcessor():
             ] = 1
 
         # get the bird's eye view of the combined threshold image
-        #b = self.perspective_transform('b', self.currentFrame)
-        birds_view_thresh = self.perspective_transform('b', self.combined_threshold)
+        if self.debugFOV == True:
+            FOV = self.perspective_transform('b', self.currentFrame)
+        else:
+            birds_view_thresh = self.perspective_transform('b', self.combined_threshold)
 
-        # detect lanes in the current frame
-        lane_detection, lanes_valid = self.detect_lanes(birds_view_thresh)
+            # detect lanes in the current frame
+            lane_detection, lanes_valid = self.detect_lanes(birds_view_thresh)
 
         #self.show_debug_plots()
         return self.visualize_lanes(lane_detection, lanes_valid)
@@ -156,15 +117,22 @@ class LaneImageProcessor():
 
     def visualize_lanes(self, debug_viz, lanes_valid):
         """
-        TODO
+        `debug_viz` Input debug image from detect_lanes operation to be included in the debug view
+        `lanes_valid` Input global flag if the lanes are valid
+
+        This function takes the current frame, a debug image and the current lanes to calculate
+        the output visualization for the lane detection algorithm.
+
+        Returns an annotated imaged with detected lanes overlayed
         """
 
         # draw overlay image for current frame
         overlay = np.zeros_like(self.currentFrame)
         frame = np.copy(self.currentFrame)
 
+        # lines are only drawn if they have valid data
         if lanes_valid == True:
-            ploty = np.linspace(0, frame.shape[0]-1, frame.shape[0] )
+            ploty = np.linspace(0, frame.shape[0] - 1, frame.shape[0])
             left_fit_x = self.lines['left'].get_fit_x(ploty)
             right_fit_x = self.lines['right'].get_fit_x(ploty)
 
@@ -181,7 +149,6 @@ class LaneImageProcessor():
             frame = cv2.addWeighted(frame, 1, warp, 0.3, 0.)
 
             # annotate image with curavtures and bases
-            # TODO: mean curvature and car pos from center
             rad_left = self.lines['left'].radius_of_curvature
             rad_right = self.lines['left'].radius_of_curvature
             curvature_text = 'Radius of curvature: ' + str(round((rad_left + rad_right) / 2, 2)) + \
@@ -190,7 +157,8 @@ class LaneImageProcessor():
                 'm Base right: ' + str(round(self.lines['right'].line_base_pos, 2)) + 'm'
 
             deviation_of_center = abs(self.lines['left'].line_base_pos) - abs(self.lines['right'].line_base_pos)
-            pos_text = 'Vehicle is ' + str(abs(round(deviation_of_center, 2))) + 'm ' + ('left ' if (deviation_of_center < 0) else 'right ') + 'of center'
+            pos_text = 'Vehicle is ' + str(abs(round(deviation_of_center, 2))) + 'm ' + \
+                ('left ' if (deviation_of_center < 0) else 'right ') + 'of center'
 
             cv2.putText(frame, curvature_text, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
             cv2.putText(frame, line_base_text, (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
@@ -199,16 +167,19 @@ class LaneImageProcessor():
 
         if self.showDebug == True:
             # compose a return image consisting of analysis steps
-            # TODO: use shapes instead of magic numbers
-            debug_image = np.zeros((720, 1920, 3), dtype=np.uint8)
-            debug_image[0:720, 0:1280] = frame
-            debug_image[0:360, 1280:] = cv2.resize(debug_viz, (640, 360))
+            debug_image = np.zeros(self.debug_image_shape, dtype=np.uint8)
+            debug_image[0:frame.shape[0], 0:frame.shape[1]] = frame
+            debug_image[0:self.debug_image_small_size[1], frame.shape[1]:] = \
+                cv2.resize(debug_viz, self.debug_image_small_size)
 
             combined = np.dstack((self.combined_threshold, self.combined_threshold,
                 self.combined_threshold)) * 255
-            debug_image[360:720, 1280:] = cv2.resize(combined, (640, 360))
+            debug_image[self.debug_image_small_size[1]:frame.shape[0], frame.shape[1]:] = \
+                cv2.resize(combined, (640, 360))
+
             return debug_image
         else:
+            # if debug isn't enabled, return the annotated frame only
             return frame
 
 
@@ -272,8 +243,6 @@ class LaneImageProcessor():
         lower_half = bird_view[bird_view.shape[0] // 2:, :]
         histogram = np.sum(lower_half, axis=0)
 
-        # TODO: histogram visualization
-
         # split histogram into left and right, as car should be always between
         # the lines (except lange change) and camera is mounted in center
         out_img = np.dstack((bird_view, bird_view, bird_view)) * 255
@@ -283,7 +252,7 @@ class LaneImageProcessor():
         rightx_base = np.argmax(histogram[midpoint:]) + midpoint
 
         # sliding window parameters
-        number_of_windows = 10 # total number of windows vertically
+        number_of_windows = 8 # total number of windows vertically
         margin = 100 # pixel margin for each window left and right of center
         minpix = 50 # minimun number of pixels to detect for center replacing
 
@@ -359,7 +328,6 @@ class LaneImageProcessor():
         """
         # detect the X and Y positions of all relevant lane pixels - depending on
         # history of detected lanes
-        # TODO: depending on history don't always start a fresh search
         if (self.lines['left'].detected == True) and (self.lines['right'].detected == True):
             leftx, lefty, overlay1 = self.search_around_poly(bird_view, self.lines['left'].current_fit)
             rightx, righty, overlay2 = self.search_around_poly(bird_view, self.lines['right'].current_fit)
@@ -412,20 +380,25 @@ class LaneImageProcessor():
 
     def perspective_transform(self, direction, srcImage):
         """
-        TODO
-        """
-        # TODO: globals to avoid magic numbers in update and restore call
+        `direction` Input that defines the direction to transform (b - world to bird's view, else back)
+        `srcImage` Input that will be transformed
 
+        This function does a perspective transform in a given direction on a given source image. It
+        relies on four defined points in the world space and four points in the perspective space
+
+        Returns the warped image
         """
-        srcImage = cv2.line(srcImage, (self.world[0][0], self.world[0][1]),
-            (self.world[1][0], self.world[1][1]), (255, 0, 0), 1)
-        srcImage = cv2.line(srcImage, (self.world[1][0], self.world[1][1]),
-            (self.world[2][0], self.world[2][1]), (255, 0, 0), 1)
-        srcImage = cv2.line(srcImage, (self.world[2][0], self.world[2][1]),
-            (self.world[3][0], self.world[3][1]), (255, 0, 0), 1)
-        srcImage = cv2.line(srcImage, (self.world[3][0], self.world[3][1]),
-            (self.world[0][0], self.world[0][1]), (255, 0, 0), 1)
-        """
+
+        # if debug view for FOV is activated, draw the ROI on the original image and transform it
+        if self.debugFOV == True:
+            srcImage = cv2.line(srcImage, (self.world[0][0], self.world[0][1]),
+                (self.world[1][0], self.world[1][1]), (255, 0, 0), 1)
+            srcImage = cv2.line(srcImage, (self.world[1][0], self.world[1][1]),
+                (self.world[2][0], self.world[2][1]), (255, 0, 0), 1)
+            srcImage = cv2.line(srcImage, (self.world[2][0], self.world[2][1]),
+                (self.world[3][0], self.world[3][1]), (255, 0, 0), 1)
+            srcImage = cv2.line(srcImage, (self.world[3][0], self.world[3][1]),
+                (self.world[0][0], self.world[0][1]), (255, 0, 0), 1)
 
         # get perspective perspective transform
         if direction == 'b':
@@ -434,15 +407,16 @@ class LaneImageProcessor():
         else:
             M = cv2.getPerspectiveTransform(self.perspective, self.world)
 
-        # TODO: image shape
-        transformed = cv2.warpPerspective(srcImage, M, (1280, 720), flags=cv2.INTER_LINEAR)
+        # transform the image based on the source and destination points
+        transformed = cv2.warpPerspective(srcImage, M, (srcImage.shape[1],
+            srcImage.shape[0]), flags=cv2.INTER_LINEAR)
 
-        """
-        f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24,9))
-        ax1.imshow(srcImage, cmap='gray')
-        ax2.imshow(transformed, cmap='gray')
-        plt.show()
-        """
+        # if debug view for FOV is activated, draw the ROI on the original image and transform it
+        if self.debugFOV == True:
+            f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24,9))
+            ax1.imshow(srcImage, cmap='gray')
+            ax2.imshow(transformed, cmap='gray')
+            plt.show()
 
         return transformed
 

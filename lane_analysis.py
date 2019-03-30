@@ -60,7 +60,7 @@ if __name__ == "__main__":
 
     """
     testimage = camera.undistort(testimage)
-    imageProcessor.process(testimage, debugMode, True)
+    imageProcessor.process(testimage, debugMode, True, debugFOV=True)
     """
 
     test_output = 'project_video_output.mp4'
