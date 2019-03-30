@@ -11,6 +11,7 @@ class LaneImageProcessor():
     def __init__(self):
         # flag to show debug images while processing
         self.showDebug = False
+        self.noSanityCheck = False
         # current frame
         currentFrame = []
         # current grayscale
@@ -32,9 +33,16 @@ class LaneImageProcessor():
         self.max_unplausible_lines = 10
 
         # define the world and perspective space points
+        """
         self.world = np.float32(
             [[603, 443],
             [677, 443],
+            [1095, 707],
+            [210, 707]])
+        """
+        self.world = np.float32(
+            [[576, 460],
+            [703, 460],
             [1095, 707],
             [210, 707]])
 
@@ -52,7 +60,7 @@ class LaneImageProcessor():
             [920, 720],
             [260, 720]])
 
-    def process(self, frame, showDebugImages=True, reset=False):
+    def process(self, frame, showDebugImages=True, reset=False, noSanityCheck=False):
         """
         `frame` Input frame in RGB color space to be processed
         `showDebugImages` Input flag to show debug images while processing
@@ -63,6 +71,7 @@ class LaneImageProcessor():
         returns the current to lane lines
         """
         self.showDebug = showDebugImages
+        self.noSanityCheck = noSanityCheck
 
         if reset == True:
             self.lines['left'].reset()
@@ -135,6 +144,7 @@ class LaneImageProcessor():
             ] = 1
 
         # get the bird's eye view of the combined threshold image
+        #b = self.perspective_transform('b', self.currentFrame)
         birds_view_thresh = self.perspective_transform('b', self.combined_threshold)
 
         # detect lanes in the current frame
@@ -368,7 +378,8 @@ class LaneImageProcessor():
         # sanity check for lines
         restore_valid = True
 
-        if Line.sanity_check(self.lines['left'], self.lines['right'], self.perspective) == True:
+        if (self.noSanityCheck == True) or \
+            (Line.sanity_check(self.lines['left'], self.lines['right'], self.perspective) == True):
             # sanity check passed, reset counter for consecutive unplausible lines
             self.unplausible_lines_ctr = 0
         else:
@@ -407,13 +418,13 @@ class LaneImageProcessor():
 
         """
         srcImage = cv2.line(srcImage, (self.world[0][0], self.world[0][1]),
-            (self.world[1][0], self.world[1][1]), (255, 0, 0), 2)
+            (self.world[1][0], self.world[1][1]), (255, 0, 0), 1)
         srcImage = cv2.line(srcImage, (self.world[1][0], self.world[1][1]),
-            (self.world[2][0], self.world[2][1]), (255, 0, 0), 2)
+            (self.world[2][0], self.world[2][1]), (255, 0, 0), 1)
         srcImage = cv2.line(srcImage, (self.world[2][0], self.world[2][1]),
-            (self.world[3][0], self.world[3][1]), (255, 0, 0), 2)
+            (self.world[3][0], self.world[3][1]), (255, 0, 0), 1)
         srcImage = cv2.line(srcImage, (self.world[3][0], self.world[3][1]),
-            (self.world[0][0], self.world[0][1]), (255, 0, 0), 2)
+            (self.world[0][0], self.world[0][1]), (255, 0, 0), 1)
         """
 
         # get perspective perspective transform

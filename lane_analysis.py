@@ -52,7 +52,7 @@ if __name__ == "__main__":
         print(curImage)
         testimage = mpimg.imread(curImage)
         testimage = camera.undistort(testimage)
-        debug_image = imageProcessor.process(testimage, debugMode, True)
+        debug_image = imageProcessor.process(testimage, debugMode, True, True)
 
         plt.imshow(debug_image)
         plt.show()
