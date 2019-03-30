@@ -28,24 +28,26 @@ class LaneImageProcessor():
         self.color_thresh_S = []
         self.color_thresh_H = []
         self.combined_threshold = []
-        # left and right line
-        self.lines = {'left' : Line(), 'right' : Line()}
-        self.unplausible_lines_ctr = 0
-        self.max_unplausible_lines = 10
 
         # define the world and perspective space points
+        # currently they are hard coded, in a real world environment with a fixed
+        # mounted camera this may be calculated
         self.world = np.float32(
             [[592, 450],
             [687, 450],
             [1095, 707],
             [210, 707]])
 
-        # TODO: use image shape and relative values
         self.perspective = np.float32(
             [[260, 0],
             [920, 0],
             [920, 720],
             [260, 720]])
+
+        # left and right line
+        self.lines = {'left' : Line(self.perspective), 'right' : Line(self.perspective)}
+        self.unplausible_lines_ctr = 0
+        self.max_unplausible_lines = 10
 
         # shapes for debug visualization
         self.debug_image_shape = (720, 1920, 3)
@@ -68,8 +70,8 @@ class LaneImageProcessor():
 
         # on reset triggered, reset lanes
         if reset == True:
-            self.lines['left'].reset()
-            self.lines['right'].reset()
+            self.lines['left'].reset(self.perspective)
+            self.lines['right'].reset(self.perspective)
 
         # convert to grayscale and hsl for further processing
         self.currentFrame = frame
@@ -132,13 +134,10 @@ class LaneImageProcessor():
 
         # lines are only drawn if they have valid data
         if lanes_valid == True:
-            ploty = np.linspace(0, frame.shape[0] - 1, frame.shape[0])
-            left_fit_x = self.lines['left'].get_fit_x(ploty)
-            right_fit_x = self.lines['right'].get_fit_x(ploty)
 
             # Recast the x and y points into usable format for cv2.fillPoly()
-            pts_left = np.array([np.transpose(np.vstack([left_fit_x, ploty]))])
-            pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fit_x, ploty])))])
+            pts_left = np.array([np.transpose(np.vstack([self.lines['left'].allx, self.lines['left'].ally]))])
+            pts_right = np.array([np.flipud(np.transpose(np.vstack([self.lines['right'].allx, self.lines['right'].ally])))])
             pts = np.hstack((pts_left, pts_right))
 
             # Draw the lane onto the warped blank image
@@ -183,10 +182,10 @@ class LaneImageProcessor():
             return frame
 
 
-    def search_around_poly(self, bird_view, fit):
+    def search_around_poly(self, bird_view, line):
         """
         `bird_view` Input bird view image of threshold to analyse for lanes
-        `fit` Input line fit poly around search needs to be done
+        `line` Input line with current fit to use
 
         This function finds lane pixels based on a margin around a prior detected
         poly line. This avoids setting up sliding windows in each cycle and
@@ -203,27 +202,24 @@ class LaneImageProcessor():
         nonzeroy = np.array(nonzero[0])
         nonzerox = np.array(nonzero[1])
 
-        lane_inds = ((nonzerox > (fit[0]*(nonzeroy**2) + fit[1]*nonzeroy +
-                    fit[2] - margin)) & (nonzerox < (fit[0]*(nonzeroy**2) +
-                    fit[1]*nonzeroy + fit[2] + margin)))
+        # build the search poly around the current fit
+        lane_inds = ((nonzerox > (line.current_fit[0]*(nonzeroy**2) + line.current_fit[1]*nonzeroy +
+                    line.current_fit[2] - margin)) & (nonzerox < (line.current_fit[0]*(nonzeroy**2) +
+                    line.current_fit[1]*nonzeroy + line.current_fit[2] + margin)))
 
         x = nonzerox[lane_inds]
         y = nonzeroy[lane_inds]
 
-        ploty = np.linspace(0, bird_view.shape[1], bird_view.shape[0] )
-        fitx = fit[0]*ploty**2 + fit[1]*ploty + fit[2]
-
         out_img = np.dstack((bird_view, bird_view, bird_view)) * 255
         window_img = np.zeros_like(out_img)
 
-        line_window1 = np.array([np.transpose(np.vstack([fitx-margin, ploty]))])
-        line_window2 = np.array([np.flipud(np.transpose(np.vstack([fitx+margin,
-                              ploty])))])
+        line_window1 = np.array([np.transpose(np.vstack([line.allx-margin, line.ally]))])
+        line_window2 = np.array([np.flipud(np.transpose(np.vstack([line.allx+margin,
+                              line.ally])))])
         line_pts = np.hstack((line_window1, line_window2))
 
         # Draw the lane onto the warped blank image
         cv2.fillPoly(window_img, np.int_([line_pts]), (0,255, 0))
-        #out_img = cv2.addWeighted(out_img, 1, window_img, 0.3, 0)
 
         return x, y, window_img
 
@@ -329,8 +325,8 @@ class LaneImageProcessor():
         # detect the X and Y positions of all relevant lane pixels - depending on
         # history of detected lanes
         if (self.lines['left'].detected == True) and (self.lines['right'].detected == True):
-            leftx, lefty, overlay1 = self.search_around_poly(bird_view, self.lines['left'].current_fit)
-            rightx, righty, overlay2 = self.search_around_poly(bird_view, self.lines['right'].current_fit)
+            leftx, lefty, overlay1 = self.search_around_poly(bird_view, self.lines['left'])
+            rightx, righty, overlay2 = self.search_around_poly(bird_view, self.lines['right'])
             out_img = np.dstack((bird_view, bird_view, bird_view)) * 255
             out_img = cv2.addWeighted(out_img, 1, overlay1, 0.3, 0)
             out_img = cv2.addWeighted(out_img, 1, overlay2, 0.3, 0)
@@ -338,16 +334,14 @@ class LaneImageProcessor():
             leftx, lefty, rightx, righty, out_img = self.find_lane_pixels(bird_view)
 
         # fit left and right
-        self.lines['left'].update(leftx, lefty, self.perspective)
-        self.lines['right'].update(rightx, righty, self.perspective)
-
-        # TODO: use lane_valid instead of restore_valid and secure if update did not find anything!
+        self.lines['left'].update(leftx, lefty)
+        self.lines['right'].update(rightx, righty)
 
         # sanity check for lines
         restore_valid = True
 
         if (self.noSanityCheck == True) or \
-            (Line.sanity_check(self.lines['left'], self.lines['right'], self.perspective) == True):
+            (Line.sanity_check(self.lines['left'], self.lines['right']) == True):
             # sanity check passed, reset counter for consecutive unplausible lines
             self.unplausible_lines_ctr = 0
         else:
@@ -357,20 +351,18 @@ class LaneImageProcessor():
             if self.unplausible_lines_ctr > self.max_unplausible_lines:
                 # if too many consecutive unplausible lines occured, we start fresh
                 # by using the sliding window approach based on historgram
-                print("Max number of unplausible lines reached, start new")
+                #print("Max number of unplausible lines reached, start new")
                 leftx, lefty, rightx, righty, out_img = self.find_lane_pixels(bird_view)
                 restore_valid = restore_valid and \
-                    self.lines['left'].restore_last(self.perspective, leftx, lefty)
+                    self.lines['left'].restore_last(leftx, lefty)
                 restore_valid = restore_valid and \
-                    self.lines['right'].restore_last(self.perspective, rightx, righty)
+                    self.lines['right'].restore_last(rightx, righty)
 
             else:
                 # restore the last valid lines if there
-                print("Unplausible lines, keep last pair")
-                restore_valid = restore_valid and \
-                    self.lines['left'].restore_last(self.perspective)
-                restore_valid = restore_valid and \
-                    self.lines['right'].restore_last(self.perspective)
+                #print("Unplausible lines, keep last pair")
+                restore_valid = restore_valid and self.lines['left'].restore_last()
+                restore_valid = restore_valid and self.lines['right'].restore_last()
 
         # Colors in the left and right lane regions
         out_img[lefty, leftx] = [255, 0, 0]
