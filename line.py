@@ -19,9 +19,9 @@ class Line():
         #polynomial coefficients for the most recent fit
         self.current_fit = [np.array([False])]
         #radius of curvature of the line in some units
-        self.radius_of_curvature = None
+        self.radius_of_curvature = 0
         #distance in meters of vehicle center from the line
-        self.line_base_pos = None
+        self.line_base_pos = 0
         #difference in fit coefficients between last and new fits
         self.diffs = np.array([0,0,0], dtype='float')
         #x values for detected line pixels
@@ -69,10 +69,12 @@ class Line():
 
             #print("Best_fit: ", self.best_fit)
 
-
+            # TODO: this should be fitted points! this can save calculation later in processing class
+            # TODO: refactor for better efficiency!!!
+            # TODO: restore_last and curvature handling on fallback
             # safe current fit points
-            self.allx = points_x
-            self.ally = points_y
+            self.ally = np.linspace(0, roi_warped_points[2][1] - 1, roi_warped_points[2][1])
+            self.allx = self.get_fit_x(self.ally)
 
             self.calculate_metrics(roi_warped_points)
 
@@ -148,7 +150,9 @@ class Line():
         xm_per_pix = 3.7 / (roi_warped_points[1][0] - roi_warped_points[0][0])
 
         # each dashed line is 3m long --> about 30m for warped image
-        ym_per_pix = 30 / (roi_warped_points[2][1] - roi_warped_points[0][1])
+        ym_per_pix = 35 / (roi_warped_points[2][1] - roi_warped_points[0][1])
+
+        # TODO: put metric distances to ROI definition if possible
 
         # from the roi pixels we calculate the offset from the camera if the car
         # is at middle --> ie. half bottom roi with is 0
@@ -165,8 +169,12 @@ class Line():
         self.line_base_pos = base_fitx * xm_per_pix - x_center
 
         ##### TO-DO: Implement the calculation of R_curve (radius of curvature) #####
-        self.radius_of_curvature = ((1 + (2*self.best_fit[0]*roi_warped_points[2][1] + \
-            self.best_fit[1])**2)**1.5) / np.absolute(2*self.best_fit[0])
+        # TODO: eliminate calculation
+
+        fit_cr = np.polyfit(self.ally * ym_per_pix, self.allx * xm_per_pix, 2)
+
+        self.radius_of_curvature = ((1 + (2*fit_cr[0]*719*ym_per_pix + \
+            fit_cr[1])**2)**1.5) / np.absolute(2*fit_cr[0])
 
 
     @staticmethod

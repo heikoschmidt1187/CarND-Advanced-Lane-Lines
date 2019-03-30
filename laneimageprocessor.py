@@ -39,11 +39,18 @@ class LaneImageProcessor():
             [210, 707]])
 
         # TODO: use image shape
+        """
         self.perspective = np.float32(
             [[260, 0],
             [920, 0],
             [920, 720],
             [260, 720]])
+        """
+        self.perspective = np.float32(
+            [[300, 0],
+            [920, 0],
+            [920, 720],
+            [300, 720]])
 
     def process(self, frame, showDebugImages=True, reset=False):
         """
@@ -72,10 +79,16 @@ class LaneImageProcessor():
         self.currentHLS = cv2.GaussianBlur(self.currentHLS, (5, 5), 0)
 
         # check for useful sobel operators
+        """
         self.abs_sobel_x = self.abs_sobel_threshold('x', threshold=(25, 255))
         self.abs_sobel_y = self.abs_sobel_threshold('y', threshold=(25, 255))
         self.mag_grad = self.mag_sobel_threshold(threshold=(34, 255))
         self.dir_grad = self.direction_sobel_threshold(threshold=(0.7, 1.3))
+        """
+        self.abs_sobel_x = self.abs_sobel_threshold('x', kernel_size=7, threshold=(15, 100))
+        self.abs_sobel_y = self.abs_sobel_threshold('y', kernel_size=7, threshold=(15, 100))
+        self.mag_grad = self.mag_sobel_threshold(kernel_size=7, threshold=(30, 100))
+        self.dir_grad = self.direction_sobel_threshold(kernel_size=31, threshold=(0.5, 1.0))
 
         # check for useful color operators
         self.color_thresh_R = np.zeros_like(self.currentFrame[:,:,0])
@@ -84,7 +97,10 @@ class LaneImageProcessor():
 
         self.color_thresh_S = np.zeros_like(self.currentHLS[:,:,2])
         S = self.currentHLS[:,:,2]
+        """
         self.color_thresh_S[(S >= 80) & (S <= 255)] = 1
+        """
+        self.color_thresh_S[(S >= 170) & (S <= 255)] = 1
 
         self.color_thresh_H = np.zeros_like(self.currentHLS[:,:,0])
         H = self.currentHLS[:,:,0]
@@ -108,8 +124,15 @@ class LaneImageProcessor():
             | ((self.mag_grad == 1) & (self.dir_grad == 1)) | (self.color_thresh_S == 1)] = 1
         """
 
+        """
         self.combined_threshold[((self.abs_sobel_x == 1) & (self.abs_sobel_y == 1) & (self.color_thresh_H == 1))
         | (self.color_thresh_S == 1)] = 1
+        """
+        self.combined_threshold[
+            ((self.abs_sobel_x == 1) & (self.abs_sobel_y == 1))
+            | ((self.mag_grad == 1) & (self.dir_grad == 1))
+            | (self.color_thresh_S == 1)
+            ] = 1
 
         # get the bird's eye view of the combined threshold image
         birds_view_thresh = self.perspective_transform('b', self.combined_threshold)

@@ -57,6 +57,7 @@ if __name__ == "__main__":
         plt.imshow(debug_image)
         plt.show()
     """
+
     """
     testimage = camera.undistort(testimage)
     imageProcessor.process(testimage, debugMode, True)
@@ -66,9 +67,17 @@ if __name__ == "__main__":
     clip1 = VideoFileClip('project_video.mp4')
     test_clip = clip1.fl_image(imageProcessor.process)
     test_clip.write_videofile(test_output, audio=False)
+
     """
     test_output = 'challenge_video_output.mp4'
     clip1 = VideoFileClip('challenge_video.mp4')
+    test_clip = clip1.fl_image(imageProcessor.process)
+    test_clip.write_videofile(test_output, audio=False)
+    """
+
+    """
+    test_output = 'harder_challenge_video_output.mp4'
+    clip1 = VideoFileClip('harder_challenge_video.mp4')
     test_clip = clip1.fl_image(imageProcessor.process)
     test_clip.write_videofile(test_output, audio=False)
     """
