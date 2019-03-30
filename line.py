@@ -109,32 +109,43 @@ class Line():
         # and keep signaling a detected line to absorb small flaws of a few
         # frames - otherwise calculate with new input data
 
-        # ensure detected
-        self.detected = True
-
-        # remove current broken fit from recent fits
-        self.recent_fit = self.recent_fit[:-1]
-
-        # make last valid recent fit to current fit
-        self.current_fit = self.recent_fit[-1]
-
-        # calculate new best fit
-        sum = [np.array([False])]
-        for r in self.recent_fit:
-            sum = sum + r
-        self.best_fit = (sum / len(self.recent_fit))[0]
-        # TODO: weighted average!!!
-
-        # re calculate diffs
-        self.diffs = self.current_fit - self.best_fit
-
-        # TODO: check for corner cases!
-
-        # on new input points, update lane
+        # on new input points, reset and update lane
         if (points_x is not None) and (points_y is not None):
-            self.update(points_x, points_y)
-        else:
+            self.reset()
+            self.update(points_x, points_y, roi_warped_points)
+
+            # TODO: use return from update code!
+            return True
+
+        elif len(self.recent_fit) >= 2:
+            # ensure detected
+            self.detected = True
+
+            # remove current broken fit from recent fits
+            self.recent_fit = self.recent_fit[:-1]
+
+            # make last valid recent fit to current fit
+            self.current_fit = self.recent_fit[-1]
+
+            # calculate new best fit
+            sum = [np.array([False])]
+            for r in self.recent_fit:
+                sum = sum + r
+            self.best_fit = (sum / len(self.recent_fit))[0]
+            # TODO: weighted average!!!
+
+            # re calculate diffs
+            self.diffs = self.current_fit - self.best_fit
+
+            # TODO: check for corner cases!
+
             self.calculate_metrics(roi_warped_points)
+
+            return True
+        else:
+            # if not, there's currently no way out
+            return False
+
 
     def calculate_metrics(self, roi_warped_points):
         """
@@ -153,6 +164,7 @@ class Line():
         ym_per_pix = 35 / (roi_warped_points[2][1] - roi_warped_points[0][1])
 
         # TODO: put metric distances to ROI definition if possible
+        # TODO: make global to use in other functions
 
         # from the roi pixels we calculate the offset from the camera if the car
         # is at middle --> ie. half bottom roi with is 0
@@ -178,11 +190,43 @@ class Line():
 
 
     @staticmethod
-    def sanity_check(left_line, right_line):
+    def sanity_check(left_line, right_line, roi_warped_points):
         """
         TODO
         """
-        # check curvatures
+
+        # TODO: use confidence values for all three criteria
+
+
         # check horizontal separation distance
+        if abs(right_line.line_base_pos - left_line.line_base_pos) > 4.0:
+            print("Line base positions too far from each other")
+            return False
+
         # check lines are roughly parallel
+        # if base pos and raduius of both lines are ok, it should be enough
+        # to check the X distances of a few points with respect to their y positions
+        # so slice the Y points into chunks and check
+        chunksize = 200
+        length = min(len(left_line.ally), len(right_line.ally))
+        xm_per_pix = 3.7 / (roi_warped_points[1][0] - roi_warped_points[0][0])
+        # TODO: global definition
+
+        bias = None
+        for i in range(0, length, chunksize):
+
+            # take x at car as bias
+            if bias is None:
+                bias = abs(right_line.allx[i] - left_line.allx[i]) * xm_per_pix
+            else:
+                if abs(bias - abs(right_line.allx[i] - left_line.allx[i])*xm_per_pix) > 1.0:
+                    print("Lines are not parallel")
+                    return False
+
+        # check curvatures -- the curvatures for left and right should be roughly
+        # in the same magitude -- check for error
+        if abs(left_line.radius_of_curvature - right_line.radius_of_curvature) > 200:
+            print("Line radius of curvature too different")
+            return False
+
         return True
