@@ -50,7 +50,6 @@ class Camera():
                 # load the image
                 image = mpimg.imread(path)
 
-                # TODO: check if load was successful
                 # convert image to grayscale
                 gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 

@@ -8,17 +8,19 @@ from line import Line
 # Define a class for processing a lane image
 class LaneImageProcessor():
 
-    def __init__(self):
+    def __init__(self, camera):
         # flag to show debug images while processing
         self.showDebug = False
         self.noSanityCheck = False
         self.debugFOV = False
+        # camera object for undistortion
+        self.camera = camera
         # current frame
-        currentFrame = []
+        self.currentFrame = []
         # current grayscale
-        currentGray = []
+        self.currentGray = []
         # current HLS
-        currentHLS = []
+        self.currentHLS = []
         # current thresholds
         self.abs_sobel_x = []
         self.abs_sobel_y = []
@@ -53,6 +55,14 @@ class LaneImageProcessor():
         self.debug_image_shape = (720, 1920, 3)
         self.debug_image_small_size = (640, 360)
 
+    def reset(self, camera):
+        """
+        Resets the current state
+        """
+        self.__init__(camera)
+        self.lines['left'].reset(self.perspective)
+        self.lines['right'].reset(self.perspective)
+
 
     def process(self, frame, showDebugImages=True, reset=False, noSanityCheck=False, debugFOV=False):
         """
@@ -73,10 +83,10 @@ class LaneImageProcessor():
             self.lines['left'].reset(self.perspective)
             self.lines['right'].reset(self.perspective)
 
-        # convert to grayscale and hsl for further processing
-        self.currentFrame = frame
+        # undistort the frame and save to object state
+        self.currentFrame = self.camera.undistort(frame)
 
-        # smooth to reduce noise
+        # convert to grayscale and hsl for further processing and smooth to reduce noise
         self.currentGray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         self.currentGray = cv2.GaussianBlur(self.currentGray, (5, 5), 0)
 
@@ -103,6 +113,7 @@ class LaneImageProcessor():
             | ((self.mag_grad == 1) & (self.dir_grad == 1))
             | (self.color_thresh_S == 1)
             ] = 1
+
 
         # get the bird's eye view of the combined threshold image
         if self.debugFOV == True:
@@ -368,6 +379,19 @@ class LaneImageProcessor():
         out_img[lefty, leftx] = [255, 0, 0]
         out_img[righty, rightx] = [0, 0, 255]
 
+        cv2.polylines(img=out_img,
+                      pts=np.int32(np.dstack((self.lines['left'].allx, self.lines['left'].ally))),
+                      isClosed=False,
+                      color=(255, 255, 0),
+                      thickness=10,
+                      lineType=cv2.LINE_8)
+        cv2.polylines(img=out_img,
+                      pts=np.int32(np.dstack((self.lines['right'].allx, self.lines['right'].ally))),
+                      isClosed=False,
+                      color=(255, 255, 0),
+                      thickness=10,
+                      lineType=cv2.LINE_8)
+
         return out_img, restore_valid
 
     def perspective_transform(self, direction, srcImage):
@@ -502,23 +526,13 @@ class LaneImageProcessor():
 
         # Show debug images if selected - this may change during development
         if self.showDebug == True:
-            f, ((orig, r, g, b), (gray, h, l, s), (sx, sy, mag, dir), (rt, st, rh, combined)) = \
-            plt.subplots(4, 4, figsize=(24,9))
+            f, ((orig, gray, s), (sx, sy, mag), (dir, st, combined)) = \
+                plt.subplots(3, 3, figsize=(24,9))
 
             orig.imshow(self.currentFrame)
             orig.set_title("Original frame")
-            r.imshow(self.currentFrame[:,:,0], cmap='gray')
-            r.set_title("RGB R-Channel")
-            g.imshow(self.currentFrame[:,:,1], cmap='gray')
-            g.set_title("RGB G-Channel")
-            b.imshow(self.currentFrame[:,:,2], cmap='gray')
-            b.set_title("RGB B-Channel")
             gray.imshow(self.currentGray, cmap='gray')
             gray.set_title("Grayscale")
-            h.imshow(self.currentHLS[:,:,0], cmap='gray')
-            h.set_title("HLS H-Channel")
-            l.imshow(self.currentHLS[:,:,1], cmap='gray')
-            l.set_title("HLS L-Channel")
             s.imshow(self.currentHLS[:,:,2], cmap='gray')
             s.set_title("HLS S-Channel")
 
@@ -531,12 +545,8 @@ class LaneImageProcessor():
             dir.imshow(self.dir_grad, cmap='gray')
             dir.set_title("Direction Threshold")
 
-            rt.imshow(self.color_thresh_R, cmap='gray')
-            rt.set_title("R-Channel color threshold")
             st.imshow(self.color_thresh_S, cmap='gray')
             st.set_title("S-Channel color threshold")
-            rh.imshow(self.color_thresh_H, cmap='gray')
-            rh.set_title("H-Channel color threshold")
             combined.imshow(self.combined_threshold, cmap='gray')
             combined.set_title("Combined Threshold")
 
