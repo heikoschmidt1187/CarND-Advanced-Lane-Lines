@@ -50,8 +50,8 @@ class Line():
         # U.S. regulations minimum lane width: 3.7m
         self.xm_per_pix = 3.7 / (self.roi_warped_points[1][0] - self.roi_warped_points[0][0])
 
-        # each dashed line is 3m long --> about 30m for warped image
-        self.ym_per_pix = 35 / (self.roi_warped_points[2][1] - self.roi_warped_points[0][1])
+        # each dashed line is 3m long --> about 33m for warped image
+        self.ym_per_pix = 33 / (self.roi_warped_points[2][1] - self.roi_warped_points[0][1])
 
     def reset(self, roi_warped_points):
         """
@@ -85,6 +85,7 @@ class Line():
             self.recent_fit.append(self.current_fit)
 
             sum = [np.array([False])]
+            """
             current_weight = self.max_n + 1
             divisor = 0
 
@@ -94,6 +95,11 @@ class Line():
                 divisor = divisor + current_weight
 
             self.best_fit = (sum / divisor)[0]
+            """
+            for r in self.recent_fit:
+                sum = sum + r
+
+            self.best_fit = (sum / len(self.recent_fit))[0]
 
             # safe current fit points
             self.allx = self.get_fit_x(self.ally)
@@ -148,7 +154,7 @@ class Line():
 
         # on new input points, reset and update lane
         if (points_x is not None) and (points_y is not None):
-            self.reset(self.roi_warped_points)
+            #self.reset(self.roi_warped_points)
             self.update(points_x, points_y)
 
             return self.detected
@@ -165,6 +171,7 @@ class Line():
 
             # calculate new best fit
             sum = [np.array([False])]
+            """
             current_weight = self.max_n + 1
             divisor = 0
 
@@ -174,6 +181,12 @@ class Line():
                 divisor = divisor + current_weight
 
             self.best_fit = (sum / divisor)[0]
+            """
+
+            for r in self.recent_fit:
+                sum = sum + r
+
+            self.best_fit = (sum / len(self.recent_fit))[0]
 
             # re calculate diffs
             self.riffs = self.current_fit - self.best_fit
@@ -240,16 +253,20 @@ class Line():
         chunksize = 200
         length = min(len(left_line.ally), len(right_line.ally))
 
-        bias = None
-        for i in range(0, length, chunksize):
+        # TODO: error handling
+        if (right_line.allx is not None) and (left_line.allx is not None):
+            bias = None
+            for i in range(0, length, chunksize):
 
-            # take x at car as bias
-            if bias is None:
-                bias = abs(right_line.allx[i] - left_line.allx[i]) * left_line.xm_per_pix
-            else:
-                if abs(bias - abs(right_line.allx[i] - left_line.allx[i])*left_line.xm_per_pix) > 1.0:
-                    #print("Lines are not parallel")
-                    return False
+                # take x at car as bias
+                if bias is None:
+                    bias = abs(right_line.allx[i] - left_line.allx[i]) * left_line.xm_per_pix
+                else:
+                    if abs(bias - abs(right_line.allx[i] - left_line.allx[i])*left_line.xm_per_pix) > 1.0:
+                        #print("Lines are not parallel")
+                        return False
+        else:
+            return False
 
         # check curvatures -- the curvatures for left and right should be roughly
         # in the same magitude -- check for error

@@ -67,9 +67,21 @@ if __name__ == "__main__":
         plt.imshow(debug_image)
         plt.show()
 
+    # imageProcessor.process(testimage, debugMode, True, debugFOV=True)
     """
 
-    # imageProcessor.process(testimage, debugMode, True, debugFOV=True)
+    """
+    debugimages = glob.glob('output_images/debug/*.png')
+    for debug in debugimages:
+        debImg = mpimg.imread(debug)
+        debImg = debImg[:,:,:3]
+        plt.imshow(debImg)
+        plt.show()
+        debug_image = imageProcessor.process(debImg, debugMode, True, True)
+
+        plt.imshow(debug_image)
+        plt.show()
+    """
 
     imageProcessor.reset(camera)
     test_output1 = 'output_videos/project_video_output.mp4'
@@ -77,14 +89,18 @@ if __name__ == "__main__":
     test_clip1 = clip1.fl_image(imageProcessor.process)
     test_clip1.write_videofile(test_output1, audio=False)
 
+    """
     imageProcessor.reset(camera)
     test_output2 = 'output_videos/challenge_video_output.mp4'
     clip2 = VideoFileClip('challenge_video.mp4')
     test_clip2 = clip2.fl_image(imageProcessor.process)
     test_clip2.write_videofile(test_output2, audio=False)
+    """
 
+    """
     imageProcessor.reset(camera)
     test_output3 = 'output_videos/harder_challenge_video_output.mp4'
     clip3 = VideoFileClip('harder_challenge_video.mp4')
     test_clip3 = clip3.fl_image(imageProcessor.process)
     test_clip3.write_videofile(test_output3, audio=False)
+    """

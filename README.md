@@ -171,6 +171,8 @@ In the next steps, I applied threshold functions for absolute sobel thresholds i
   self.dir_grad = self.direction_sobel_threshold(kernel_size=31, threshold=(0.5, 1.0))
 ```
 
+**Update in 1st rework: The magnitude and direction gradients did not really improve the handling further. So I decided to remove it from the implementation and instead concentrate on color thresholding and equalization.***
+
 You can find the function implementation in laneimageprocessor.py lines 425 to 509.
 
 The parameters for kernel size, lower and upper threshold have been determined using a try and error approach on all of the given example images. I have put a special focus on the ones with lighter road surfaces and the one where the shadows of the trees in the middle of the lane are shining on the road
@@ -188,14 +190,41 @@ Again, the thresholds have been determined using try and arror. The following im
 
 ![Single Threshold Steps][threshSteps]
 
-Each of the thresholds are represented in a binary image. Next I combined them to get a final binary image to use for further analysis. From the different combinations I tried, the following gave the best results on the testimages and the project video:
+**Update in 1st rework: To improve robustness, I introduced the a conversion to the Lab colorspace. The b-channel does a good job on detecting yellow lines, fairly independent of the lighting conditions. The parameters have been determined via try and error:***
 
 ```python
-  self.combined_threshold[
-      ((self.abs_sobel_x == 1) & (self.abs_sobel_y == 1))
-      | ((self.mag_grad == 1) & (self.dir_grad == 1))
-      | (self.color_thresh_S == 1)
-      ] = 1
+  self.currentLAB = cv2.cvtColor(frame, cv2.COLOR_RGB2Lab)
+  self.currentLAB = cv2.GaussianBlur(self.currentLAB, (5, 5), 0)
+  [...]
+
+  # 1st Rework: the B channel does a great job on detecting yellow lines, even under
+  # bad lighting conditions
+  self.color_thresh_B = np.zeros_like(self.currentLAB[:,:,2])
+  B = self.currentLAB[:,:,2]
+  self.color_thresh_B[(B >= 142) & (B <= 255)] = 1
+```
+
+**After improving the yellow line detection, I also improved the white lines by using a histogram equalization and a binary threshold on the equalized image:**
+
+```python
+  # 1st Rework: with the equalized image, a binary threshold does a great job
+  # in detecting white lines, even under bad lighting conditions
+  ret, histBin = cv2.threshold(equ, thresh=250, maxval=255, type=cv2.THRESH_BINARY)
+  histBin = histBin/255
+```
+
+**For the project video, the color threshold B and the binary threshold was already enough to get a good result. To make it even more robust, I decided to keep the absolute sobel gradients and the S channel color threshold***
+
+Each of the thresholds are represented in a binary image. Next I combined them to get a final binary image to use for further analysis. From the different combinations I tried, the following gave the best results on the testimages and the project video:
+
+**Update in 1st rework: I changed the combination of the threshold for a better result:***
+```python
+  self.combined_threshold = np.zeros_like(self.currentGray)
+  [...]
+  # 1st Rework: combine gradient and color thresholds to get a robust pipeline
+  comb = np.zeros_like(self.currentGray)
+  comb[(self.abs_sobel_x == 1) & (self.abs_sobel_y == 1)] = 1
+  self.combined_threshold[(comb == 1) | (self.color_thresh_B == 1) | (histBin == 1)] = 1
 ```
 
 The following image shows the thresholding pipeline on one of the testimages:

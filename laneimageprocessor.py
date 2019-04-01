@@ -13,6 +13,7 @@ class LaneImageProcessor():
         self.showDebug = False
         self.noSanityCheck = False
         self.debugFOV = False
+        self.debugFrameCounter = 0
         # camera object for undistortion
         self.camera = camera
         # current frame
@@ -21,6 +22,8 @@ class LaneImageProcessor():
         self.currentGray = []
         # current HLS
         self.currentHLS = []
+        # current LAB
+        self.currentLAB = []
         # current thresholds
         self.abs_sobel_x = []
         self.abs_sobel_y = []
@@ -29,6 +32,7 @@ class LaneImageProcessor():
         self.color_thresh_R = []
         self.color_thresh_S = []
         self.color_thresh_H = []
+        self.color_thresh_B = []
         self.combined_threshold = []
 
         # define the world and perspective space points
@@ -93,27 +97,46 @@ class LaneImageProcessor():
         self.currentHLS = cv2.cvtColor(frame, cv2.COLOR_RGB2HLS)
         self.currentHLS = cv2.GaussianBlur(self.currentHLS, (5, 5), 0)
 
+        self.currentLAB = cv2.cvtColor(frame, cv2.COLOR_RGB2Lab)
+        self.currentLAB = cv2.GaussianBlur(self.currentLAB, (5, 5), 0)
+
         # check for useful sobel operators
         self.abs_sobel_x = self.abs_sobel_threshold('x', kernel_size=7, threshold=(15, 100))
         self.abs_sobel_y = self.abs_sobel_threshold('y', kernel_size=7, threshold=(15, 100))
+
+        """ 1st Rework: the project video work's best w/o these thresholds, they don't deliver benefit
         self.mag_grad = self.mag_sobel_threshold(kernel_size=7, threshold=(30, 100))
         self.dir_grad = self.direction_sobel_threshold(kernel_size=31, threshold=(0.5, 1.0))
+        """
 
         # check for useful color operators
         self.color_thresh_S = np.zeros_like(self.currentHLS[:,:,2])
         S = self.currentHLS[:,:,2]
         self.color_thresh_S[(S >= 170) & (S <= 255)] = 1
 
+        # 1st Rework: the B channel does a great job on detecting yellow lines, even under
+        # bad lighting conditions
+        self.color_thresh_B = np.zeros_like(self.currentLAB[:,:,2])
+        B = self.currentLAB[:,:,2]
+        self.color_thresh_B[(B >= 142) & (B <= 255)] = 1
+
         # combine the thresholds
         grad_combined = np.zeros_like(self.currentGray)
         self.combined_threshold = np.zeros_like(self.currentGray)
 
-        self.combined_threshold[
-            ((self.abs_sobel_x == 1) & (self.abs_sobel_y == 1))
-            | ((self.mag_grad == 1) & (self.dir_grad == 1))
-            | (self.color_thresh_S == 1)
-            ] = 1
+        # 1st Rework: to reduce excessive changes in brightness, equalize the grayscale
+        # image
+        equ = cv2.equalizeHist(self.currentGray)
 
+        # 1st Rework: with the equalized image, a binary threshold does a great job
+        # in detecting white lines, even under bad lighting conditions
+        ret, histBin = cv2.threshold(equ, thresh=250, maxval=255, type=cv2.THRESH_BINARY)
+        histBin = histBin/255
+
+        # 1st Rework: combine gradient and color thresholds to get a robust pipeline
+        comb = np.zeros_like(self.currentGray)
+        comb[(self.abs_sobel_x == 1) & (self.abs_sobel_y == 1)] = 1
+        self.combined_threshold[(comb == 1) | (self.color_thresh_B == 1) | (histBin == 1)] = 1
 
         # get the bird's eye view of the combined threshold image
         if self.debugFOV == True:
@@ -160,7 +183,7 @@ class LaneImageProcessor():
 
             # annotate image with curavtures and bases
             rad_left = self.lines['left'].radius_of_curvature
-            rad_right = self.lines['left'].radius_of_curvature
+            rad_right = self.lines['right'].radius_of_curvature
             curvature_text = 'Radius of curvature: ' + str(round((rad_left + rad_right) / 2, 2)) + \
                 'm (left: ' + str(round(rad_left, 2)) + 'm, right: ' + str(round(rad_right, 2)) + 'm)'
             line_base_text = 'Base left: ' + str(round(self.lines['left'].line_base_pos, 2)) + \
@@ -173,6 +196,9 @@ class LaneImageProcessor():
             cv2.putText(frame, curvature_text, (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
             cv2.putText(frame, line_base_text, (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
             cv2.putText(frame, pos_text, (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(frame, 'Frame: ' + str(self.debugFrameCounter), (10, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+            self.debugFrameCounter = self.debugFrameCounter + 1
 
 
         if self.showDebug == True:
@@ -379,6 +405,7 @@ class LaneImageProcessor():
         out_img[lefty, leftx] = [255, 0, 0]
         out_img[righty, rightx] = [0, 0, 255]
 
+        """ TODO error shape match
         cv2.polylines(img=out_img,
                       pts=np.int32(np.dstack((self.lines['left'].allx, self.lines['left'].ally))),
                       isClosed=False,
@@ -391,6 +418,7 @@ class LaneImageProcessor():
                       color=(255, 255, 0),
                       thickness=10,
                       lineType=cv2.LINE_8)
+                      """
 
         return out_img, restore_valid
 

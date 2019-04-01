@@ -103,19 +103,39 @@ cv2.createTrackbar('High', 'image', 0, 255, nothing)
 cv2.createTrackbar('Low', 'image', 0, 255, nothing)
 cv2.createTrackbar('High', 'image', 0, 255, nothing)
 
-testimages = glob.glob('test_images/*.jpg')
+#testimages = glob.glob('test_images/*.jpg')
+testimages = glob.glob('output_images/debug/*.png')
 
 for curImage in testimages:
 
     print(curImage)
 
     img = cv2.imread(curImage)
+    img = img[:,:,:3]
     img = cv2.pyrDown(img)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     hls = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)[:,:,1]
 
+    lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)[:,:,2]
+
+    """
+    f, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(24, 9))
+    ax1.imshow(img)
+    ax1.set_title("RGB")
+    ax2.imshow(lab[:,:,0], cmap='gray')
+    ax2.set_title("L")
+    ax3.imshow(lab[:,:,1], cmap='gray')
+    ax3.set_title("A")
+    ax4.imshow(lab[:,:,2], cmap='gray')
+    ax4.set_title("B")
+    plt.show()
+    """
+
     debug_image = np.zeros((360, 640 * 2, 3), dtype=np.uint8)
     debug_image[0:img.shape[0], 0:img.shape[1]] = img
+
+    gray = cv2.equalizeHist(gray)
+
 
     while(1):
 
@@ -128,9 +148,12 @@ for curImage in testimages:
 
         #binary = abs_sobel_threshold(gray, 'y', kernel_size=3, threshold=(low, high))
         #binary = mag_sobel_threshold(gray, kernel_size=3, threshold=(low, high))
+        """
         binary = np.zeros_like(hls)
-        binary[(hls > low) & (hls < high)] = 1
-        bin = np.dstack((binary, binary, binary)) * 255
+        binary[(lab > low) & (lab < high)] = 1
+        """
+        ret, binary = cv2.threshold(gray, thresh=low, maxval=high, type=cv2.THRESH_BINARY)
+        bin = np.dstack((binary, binary, binary))
         debug_image[0:bin.shape[0], img.shape[1]:] = bin
 
         cv2.imshow('window', debug_image)
